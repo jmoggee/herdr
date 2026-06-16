@@ -107,6 +107,8 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 # [theme.custom]
 # panel_bg = "reset"
 # accent = "#f5c2e7"
+# tab_number = "darkgray"
+# tab_bar_bg = "#101010"
 # red = "#ff6188"
 # green = "#a6e3a1"
 
@@ -227,6 +229,15 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 # Set false to let the terminal handle normal clicks, such as Cmd-clicking URLs.
 # Pane apps like lazygit and btop can still receive mouse when they request it.
 # mouse_capture = true
+
+# Show current tab numbers in the tab bar.
+# auto = show generated numbers for unnamed tabs
+# always = prefix custom tab names with their current switch number
+# show_tab_numbers = "auto"
+
+# Pane border style: "boxed" or "single".
+# single draws only tmux-style internal split dividers and highlights the focused pane with the accent color.
+# pane_border_style = "boxed"
 
 # Optional modifier that forwards right-click hold/drag gestures to pane apps instead of opening Herdr's pane menu.
 # Empty/off disables this. Shift is intentionally unsupported because terminals commonly reserve Shift+mouse.

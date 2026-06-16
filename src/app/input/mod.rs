@@ -269,6 +269,9 @@ impl App {
                     SettingsAction::SaveAgentBorderLabels(enabled) => {
                         self.save_agent_border_labels(enabled)
                     }
+                    SettingsAction::SavePaneBorderStyle(style) => {
+                        self.save_pane_border_style(style)
+                    }
                     SettingsAction::SavePaneHistory(enabled) => {
                         self.save_pane_history_persistence(enabled)
                     }

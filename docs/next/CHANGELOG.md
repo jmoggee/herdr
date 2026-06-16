@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+- Added `ui.show_tab_numbers = "always"` to keep current switch numbers visible on renamed tabs without duplicating auto-numbered tab labels.
+- Added `ui.pane_border_style = "single"` for tmux-style internal split dividers that highlight the focused pane with the accent color.
+- Added `theme.custom.tab_bar_bg` to set the tab bar background independently from other panel backgrounds.
+- Added terminal underline rendering, including curly underlines from SGR `4:3` and distinct underline colors, and bumped the client/server protocol version to 15 so attached clients preserve underline attributes.
+- Panes now advertise `TERM=xterm-herdr` with a local terminfo entry so terminal apps such as Neovim can discover underline-shape support.
+
 ## [0.7.0] - 2026-06-15
 
 ### Added

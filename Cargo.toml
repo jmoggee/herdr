@@ -43,3 +43,11 @@ windows-sys = { version = "0.61.2", features = [
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }
+
+[patch.crates-io]
+ratatui = { path = "../ratatui/ratatui" }
+ratatui-core = { path = "../ratatui/ratatui-core" }
+ratatui-crossterm = { path = "../ratatui/ratatui-crossterm" }
+ratatui-macros = { path = "../ratatui/ratatui-macros" }
+ratatui-termwiz = { path = "../ratatui/ratatui-termwiz" }
+ratatui-widgets = { path = "../ratatui/ratatui-widgets" }

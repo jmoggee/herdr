@@ -86,6 +86,19 @@ impl App {
         }
     }
 
+    pub(super) fn save_pane_border_style(&mut self, style: crate::config::PaneBorderStyleConfig) {
+        if self.update_config_file("pane border style", |content| {
+            crate::config::upsert_section_value(
+                content,
+                "ui",
+                "pane_border_style",
+                &format!("\"{}\"", style.as_str()),
+            )
+        }) {
+            self.apply_config_from_disk(false);
+        }
+    }
+
     pub(super) fn save_pane_history_persistence(&mut self, enabled: bool) {
         if self.update_config_file("pane screen history", |content| {
             crate::config::upsert_section_bool(content, "experimental", "pane_history", enabled)

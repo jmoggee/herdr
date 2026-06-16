@@ -26,11 +26,13 @@ pub struct ThemeConfig {
 pub struct CustomThemeColors {
     pub accent: Option<String>,
     pub panel_bg: Option<String>,
+    pub tab_bar_bg: Option<String>,
     pub surface0: Option<String>,
     pub surface1: Option<String>,
     pub surface_dim: Option<String>,
     pub overlay0: Option<String>,
     pub overlay1: Option<String>,
+    pub tab_number: Option<String>,
     pub text: Option<String>,
     pub subtext0: Option<String>,
     pub mauve: Option<String>,
@@ -142,14 +144,18 @@ name = "nord"
 
 [theme.custom]
 panel_bg = "#1e1e2e"
+tab_bar_bg = "#101010"
 accent = "#ff79c6"
+tab_number = "#5c5c5c"
 red = "rgb(255, 85, 85)"
 "##;
         let config: Config = toml::from_str(toml).unwrap();
         assert_eq!(config.theme.name.as_deref(), Some("nord"));
         let custom = config.theme.custom.as_ref().unwrap();
         assert_eq!(custom.panel_bg.as_deref(), Some("#1e1e2e"));
+        assert_eq!(custom.tab_bar_bg.as_deref(), Some("#101010"));
         assert_eq!(custom.accent.as_deref(), Some("#ff79c6"));
+        assert_eq!(custom.tab_number.as_deref(), Some("#5c5c5c"));
         assert_eq!(custom.red.as_deref(), Some("rgb(255, 85, 85)"));
         assert!(custom.green.is_none());
     }

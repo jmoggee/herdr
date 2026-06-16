@@ -8,10 +8,16 @@ use ratatui::{
 
 use super::scrollbar::{render_pane_scrollbar, should_show_scrollbar};
 use super::widgets::panel_contrast_fg;
-use crate::app::state::Palette;
+use crate::app::state::{Palette, PaneBorderStyle};
 use crate::app::{AppState, Mode};
 use crate::layout::PaneInfo;
 use crate::terminal::{TerminalRuntime, TerminalRuntimeRegistry};
+use crate::workspace::Workspace;
+
+const BORDER_LEFT: u8 = 0b0001;
+const BORDER_RIGHT: u8 = 0b0010;
+const BORDER_UP: u8 = 0b0100;
+const BORDER_DOWN: u8 = 0b1000;
 
 pub(crate) fn pane_is_scrolled_back(rt: &TerminalRuntime) -> bool {
     rt.scroll_metrics()
@@ -61,6 +67,39 @@ fn pane_inner_rect(area: Rect, framed: bool) -> Rect {
     } else {
         area
     }
+}
+
+fn ranges_overlap(a_start: u16, a_len: u16, b_start: u16, b_len: u16) -> bool {
+    a_start < b_start.saturating_add(b_len) && a_start.saturating_add(a_len) > b_start
+}
+
+fn single_pane_inner_rect(rect: Rect, splits: &[crate::layout::SplitBorder]) -> Rect {
+    let mut inner = rect;
+    if inner.width == 0 || inner.height == 0 {
+        return inner;
+    }
+
+    let has_left_divider = splits.iter().any(|split| {
+        split.direction == ratatui::layout::Direction::Horizontal
+            && split.pos == rect.x
+            && ranges_overlap(split.area.y, split.area.height, rect.y, rect.height)
+    });
+    let has_top_divider = splits.iter().any(|split| {
+        split.direction == ratatui::layout::Direction::Vertical
+            && split.pos == rect.y
+            && ranges_overlap(split.area.x, split.area.width, rect.x, rect.width)
+    });
+
+    if has_left_divider {
+        inner.x = inner.x.saturating_add(1);
+        inner.width = inner.width.saturating_sub(1);
+    }
+    if has_top_divider {
+        inner.y = inner.y.saturating_add(1);
+        inner.height = inner.height.saturating_sub(1);
+    }
+
+    inner
 }
 
 fn runtime_for_tab_pane<'a>(
@@ -126,7 +165,12 @@ pub(super) fn resize_tab_panes(
 
     for info in tab.layout.panes(area) {
         let pane_inner = if multi_pane {
-            Block::default().borders(Borders::ALL).inner(info.rect)
+            if app.pane_border_style == PaneBorderStyle::Single {
+                let splits = tab.layout.splits(area);
+                single_pane_inner_rect(info.rect, &splits)
+            } else {
+                Block::default().borders(Borders::ALL).inner(info.rect)
+            }
         } else {
             area
         };
@@ -196,15 +240,20 @@ pub(super) fn compute_pane_infos(
 
     for info in &mut pane_infos {
         let pane_inner = if multi_pane {
-            let border_set = if info.is_focused && terminal_active {
-                ratatui::symbols::border::THICK
+            if app.pane_border_style == PaneBorderStyle::Single {
+                let splits = ws.layout.splits(area);
+                single_pane_inner_rect(info.rect, &splits)
             } else {
-                ratatui::symbols::border::PLAIN
-            };
-            let block = Block::default()
-                .borders(Borders::ALL)
-                .border_set(border_set);
-            block.inner(info.rect)
+                let border_set = if info.is_focused && terminal_active {
+                    ratatui::symbols::border::THICK
+                } else {
+                    ratatui::symbols::border::PLAIN
+                };
+                let block = Block::default()
+                    .borders(Borders::ALL)
+                    .border_set(border_set);
+                block.inner(info.rect)
+            }
         } else {
             area
         };
@@ -252,9 +301,13 @@ pub(super) fn render_panes(
     let multi_pane = ws.layout.pane_count() > 1;
     let terminal_active = app.mode == Mode::Terminal;
 
+    if multi_pane && app.pane_border_style == PaneBorderStyle::Single {
+        render_single_pane_borders(app, ws, frame, area);
+    }
+
     for info in &app.view.pane_infos {
         if let Some(rt) = app.runtime_for_pane_in_workspace(terminal_runtimes, ws_idx, info.id) {
-            if multi_pane {
+            if multi_pane && app.pane_border_style == PaneBorderStyle::Boxed {
                 let (border_style, border_set) = if info.is_focused && terminal_active {
                     (
                         Style::default().fg(app.palette.accent),
@@ -319,6 +372,209 @@ pub(super) fn render_panes(
             );
             render_copy_mode_cursor(app, frame, info);
         }
+    }
+}
+
+fn border_symbol(mask: u8) -> &'static str {
+    match mask {
+        BORDER_LEFT | BORDER_RIGHT => "─",
+        BORDER_UP | BORDER_DOWN => "│",
+        x if x == (BORDER_LEFT | BORDER_RIGHT) => "─",
+        x if x == (BORDER_UP | BORDER_DOWN) => "│",
+        x if x == BORDER_RIGHT | BORDER_DOWN => "┌",
+        x if x == BORDER_LEFT | BORDER_DOWN => "┐",
+        x if x == BORDER_RIGHT | BORDER_UP => "└",
+        x if x == BORDER_LEFT | BORDER_UP => "┘",
+        x if x == BORDER_LEFT | BORDER_RIGHT | BORDER_DOWN => "┬",
+        x if x == BORDER_LEFT | BORDER_RIGHT | BORDER_UP => "┴",
+        x if x == BORDER_RIGHT | BORDER_UP | BORDER_DOWN => "├",
+        x if x == BORDER_LEFT | BORDER_UP | BORDER_DOWN => "┤",
+        x if x == BORDER_LEFT | BORDER_RIGHT | BORDER_UP | BORDER_DOWN => "┼",
+        _ => " ",
+    }
+}
+
+fn add_single_border_cell(
+    cells: &mut std::collections::BTreeMap<(u16, u16), (u8, bool)>,
+    x: u16,
+    y: u16,
+    mask: u8,
+    focused: bool,
+) {
+    let entry = cells.entry((x, y)).or_insert((0, false));
+    entry.0 |= mask;
+    entry.1 |= focused;
+}
+
+fn solidify_single_border_junctions(
+    cells: &mut std::collections::BTreeMap<(u16, u16), (u8, bool)>,
+) {
+    let snapshot = cells.clone();
+    for (&(x, y), &(mask, focused)) in &snapshot {
+        let has_vertical = mask & (BORDER_UP | BORDER_DOWN) != 0;
+        let has_horizontal = mask & (BORDER_LEFT | BORDER_RIGHT) != 0;
+        let mut extra_mask = 0;
+        let mut extra_focused = focused;
+
+        if has_vertical {
+            if let Some((left_mask, left_focused)) =
+                x.checked_sub(1).and_then(|left| snapshot.get(&(left, y)))
+            {
+                if left_mask & (BORDER_LEFT | BORDER_RIGHT) != 0 {
+                    extra_mask |= BORDER_LEFT;
+                    extra_focused |= *left_focused;
+                }
+            }
+            if let Some((right_mask, right_focused)) = snapshot.get(&(x.saturating_add(1), y)) {
+                if right_mask & (BORDER_LEFT | BORDER_RIGHT) != 0 {
+                    extra_mask |= BORDER_RIGHT;
+                    extra_focused |= *right_focused;
+                }
+            }
+        }
+
+        if has_horizontal {
+            if let Some((up_mask, up_focused)) =
+                y.checked_sub(1).and_then(|up| snapshot.get(&(x, up)))
+            {
+                if up_mask & (BORDER_UP | BORDER_DOWN) != 0 {
+                    extra_mask |= BORDER_UP;
+                    extra_focused |= *up_focused;
+                }
+            }
+            if let Some((down_mask, down_focused)) = snapshot.get(&(x, y.saturating_add(1))) {
+                if down_mask & (BORDER_UP | BORDER_DOWN) != 0 {
+                    extra_mask |= BORDER_DOWN;
+                    extra_focused |= *down_focused;
+                }
+            }
+        }
+
+        if extra_mask != 0 {
+            let entry = cells.entry((x, y)).or_insert((0, false));
+            entry.0 |= extra_mask;
+            entry.1 |= extra_focused;
+        }
+    }
+}
+
+fn two_pane_split_cell_focused(
+    split: &crate::layout::SplitBorder,
+    focused: Rect,
+    x: u16,
+    y: u16,
+) -> bool {
+    match split.direction {
+        ratatui::layout::Direction::Horizontal => {
+            let midpoint = split.area.y.saturating_add(split.area.height / 2);
+            if focused.x < split.pos {
+                y < midpoint
+            } else {
+                y >= midpoint
+            }
+        }
+        ratatui::layout::Direction::Vertical => {
+            let midpoint = split.area.x.saturating_add(split.area.width / 2);
+            if focused.y < split.pos {
+                x < midpoint
+            } else {
+                x >= midpoint
+            }
+        }
+    }
+}
+
+fn split_cell_touches_focused_pane(
+    split: &crate::layout::SplitBorder,
+    focused: Rect,
+    pane_count: usize,
+    x: u16,
+    y: u16,
+) -> bool {
+    if pane_count == 2 {
+        return two_pane_split_cell_focused(split, focused, x, y);
+    }
+
+    match split.direction {
+        ratatui::layout::Direction::Horizontal => {
+            (split.pos == focused.x || split.pos == focused.x.saturating_add(focused.width))
+                && ranges_overlap(y, 1, focused.y, focused.height)
+        }
+        ratatui::layout::Direction::Vertical => {
+            (split.pos == focused.y || split.pos == focused.y.saturating_add(focused.height))
+                && ranges_overlap(x, 1, focused.x, focused.width)
+        }
+    }
+}
+
+fn render_single_pane_borders(app: &AppState, ws: &Workspace, frame: &mut Frame, area: Rect) {
+    let mut cells = std::collections::BTreeMap::new();
+    let splits = ws.layout.splits(area);
+    let focused = app.view.pane_infos.iter().find(|info| info.is_focused);
+    let pane_count = app.view.pane_infos.len();
+
+    for split in &splits {
+        let Some(focused) = focused else {
+            break;
+        };
+        match split.direction {
+            ratatui::layout::Direction::Horizontal => {
+                let x = split.pos;
+                let y1 = split.area.y;
+                let y2 = split
+                    .area
+                    .y
+                    .saturating_add(split.area.height)
+                    .saturating_sub(1);
+                for y in y1..=y2 {
+                    let mut mask = 0;
+                    if y > y1 {
+                        mask |= BORDER_UP;
+                    }
+                    if y < y2 {
+                        mask |= BORDER_DOWN;
+                    }
+                    let cell_focused =
+                        split_cell_touches_focused_pane(split, focused.rect, pane_count, x, y);
+                    add_single_border_cell(&mut cells, x, y, mask, cell_focused);
+                }
+            }
+            ratatui::layout::Direction::Vertical => {
+                let y = split.pos;
+                let x1 = split.area.x;
+                let x2 = split
+                    .area
+                    .x
+                    .saturating_add(split.area.width)
+                    .saturating_sub(1);
+                for x in x1..=x2 {
+                    let mut mask = 0;
+                    if x > x1 {
+                        mask |= BORDER_LEFT;
+                    }
+                    if x < x2 {
+                        mask |= BORDER_RIGHT;
+                    }
+                    let cell_focused =
+                        split_cell_touches_focused_pane(split, focused.rect, pane_count, x, y);
+                    add_single_border_cell(&mut cells, x, y, mask, cell_focused);
+                }
+            }
+        }
+    }
+
+    solidify_single_border_junctions(&mut cells);
+
+    let buffer = frame.buffer_mut();
+    for ((x, y), (mask, focused)) in cells {
+        let style = if focused {
+            Style::default().fg(app.palette.accent)
+        } else {
+            Style::default().fg(app.palette.overlay0)
+        };
+        buffer[(x, y)]
+            .set_symbol(border_symbol(mask))
+            .set_style(style);
     }
 }
 
@@ -553,6 +809,247 @@ mod tests {
         assert_eq!(info.rect, area);
         assert_eq!(info.scrollbar_rect, None);
         assert_eq!(info.inner_rect, Rect::new(10, 3, 39, 8));
+    }
+
+    #[tokio::test]
+    async fn single_pane_borders_use_plain_internal_divider_with_accent_color() {
+        let mut app = AppState::test_new();
+        let mut workspace = Workspace::test_new("test");
+        let root_pane = workspace.tabs[0].root_pane;
+        let right_pane = workspace.test_split(ratatui::layout::Direction::Horizontal);
+        workspace.tabs[0].layout.focus_pane(root_pane);
+        workspace.tabs[0].runtimes.insert(
+            root_pane,
+            TerminalRuntime::test_with_scrollback_bytes(18, 4, 128, b"left\n"),
+        );
+        workspace.tabs[0].runtimes.insert(
+            right_pane,
+            TerminalRuntime::test_with_scrollback_bytes(18, 4, 128, b"right\n"),
+        );
+        app.workspaces = vec![workspace];
+        app.active = Some(0);
+        app.pane_border_style = crate::app::state::PaneBorderStyle::Single;
+
+        let area = Rect::new(0, 0, 40, 8);
+        let terminal_runtimes = TerminalRuntimeRegistry::new();
+        app.view.pane_infos = compute_pane_infos(
+            &app,
+            &terminal_runtimes,
+            area,
+            false,
+            crate::kitty_graphics::HostCellSize::default(),
+        );
+
+        let backend = ratatui::backend::TestBackend::new(40, 8);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| render_panes(&app, &terminal_runtimes, frame, area))
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        assert_eq!(buffer[(20, 0)].symbol(), "│");
+        assert_ne!(buffer[(20, 0)].symbol(), "┃");
+        assert_eq!(buffer[(20, 0)].style().fg, Some(app.palette.accent));
+    }
+
+    #[tokio::test]
+    async fn single_pane_borders_draw_only_internal_divider_without_outer_frame() {
+        let mut app = AppState::test_new();
+        let mut workspace = Workspace::test_new("test");
+        let root_pane = workspace.tabs[0].root_pane;
+        let right_pane = workspace.test_split(ratatui::layout::Direction::Horizontal);
+        workspace.tabs[0].layout.focus_pane(root_pane);
+        workspace.tabs[0].runtimes.insert(
+            root_pane,
+            TerminalRuntime::test_with_scrollback_bytes(10, 4, 128, b"left\n"),
+        );
+        workspace.tabs[0].runtimes.insert(
+            right_pane,
+            TerminalRuntime::test_with_scrollback_bytes(10, 4, 128, b"right\n"),
+        );
+        app.workspaces = vec![workspace];
+        app.active = Some(0);
+        app.pane_border_style = crate::app::state::PaneBorderStyle::Single;
+
+        let area = Rect::new(0, 0, 20, 6);
+        let terminal_runtimes = TerminalRuntimeRegistry::new();
+        app.view.pane_infos = compute_pane_infos(
+            &app,
+            &terminal_runtimes,
+            area,
+            false,
+            crate::kitty_graphics::HostCellSize::default(),
+        );
+
+        let backend = ratatui::backend::TestBackend::new(20, 6);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| render_panes(&app, &terminal_runtimes, frame, area))
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        assert_ne!(buffer[(0, 0)].symbol(), "┌");
+        assert_eq!(buffer[(10, 0)].symbol(), "│");
+        assert_eq!(buffer[(10, 5)].symbol(), "│");
+        assert_eq!(app.view.pane_infos[0].inner_rect, Rect::new(0, 0, 9, 6));
+        assert_eq!(app.view.pane_infos[1].inner_rect, Rect::new(11, 0, 8, 6));
+    }
+
+    #[tokio::test]
+    async fn single_pane_two_column_split_highlights_top_or_bottom_half_for_focus() {
+        let mut app = AppState::test_new();
+        let mut workspace = Workspace::test_new("test");
+        let root_pane = workspace.tabs[0].root_pane;
+        let right_pane = workspace.test_split(ratatui::layout::Direction::Horizontal);
+        workspace.tabs[0].runtimes.insert(
+            root_pane,
+            TerminalRuntime::test_with_scrollback_bytes(10, 4, 128, b"left\n"),
+        );
+        workspace.tabs[0].runtimes.insert(
+            right_pane,
+            TerminalRuntime::test_with_scrollback_bytes(10, 4, 128, b"right\n"),
+        );
+        app.workspaces = vec![workspace];
+        app.active = Some(0);
+        app.pane_border_style = crate::app::state::PaneBorderStyle::Single;
+
+        let area = Rect::new(0, 0, 20, 6);
+        let terminal_runtimes = TerminalRuntimeRegistry::new();
+
+        app.workspaces[0].tabs[0].layout.focus_pane(root_pane);
+        app.view.pane_infos = compute_pane_infos(
+            &app,
+            &terminal_runtimes,
+            area,
+            false,
+            crate::kitty_graphics::HostCellSize::default(),
+        );
+        let backend = ratatui::backend::TestBackend::new(20, 6);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| render_panes(&app, &terminal_runtimes, frame, area))
+            .unwrap();
+        let buffer = terminal.backend().buffer();
+        assert_eq!(buffer[(10, 1)].style().fg, Some(app.palette.accent));
+        assert_eq!(buffer[(10, 4)].style().fg, Some(app.palette.overlay0));
+
+        app.workspaces[0].tabs[0].layout.focus_pane(right_pane);
+        app.view.pane_infos = compute_pane_infos(
+            &app,
+            &terminal_runtimes,
+            area,
+            false,
+            crate::kitty_graphics::HostCellSize::default(),
+        );
+        let backend = ratatui::backend::TestBackend::new(20, 6);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| render_panes(&app, &terminal_runtimes, frame, area))
+            .unwrap();
+        let buffer = terminal.backend().buffer();
+        assert_eq!(buffer[(10, 1)].style().fg, Some(app.palette.overlay0));
+        assert_eq!(buffer[(10, 4)].style().fg, Some(app.palette.accent));
+    }
+
+    #[tokio::test]
+    async fn single_pane_two_row_split_highlights_left_or_right_half_for_focus() {
+        let mut app = AppState::test_new();
+        let mut workspace = Workspace::test_new("test");
+        let root_pane = workspace.tabs[0].root_pane;
+        let bottom_pane = workspace.test_split(ratatui::layout::Direction::Vertical);
+        workspace.tabs[0].runtimes.insert(
+            root_pane,
+            TerminalRuntime::test_with_scrollback_bytes(10, 4, 128, b"top\n"),
+        );
+        workspace.tabs[0].runtimes.insert(
+            bottom_pane,
+            TerminalRuntime::test_with_scrollback_bytes(10, 4, 128, b"bottom\n"),
+        );
+        app.workspaces = vec![workspace];
+        app.active = Some(0);
+        app.pane_border_style = crate::app::state::PaneBorderStyle::Single;
+
+        let area = Rect::new(0, 0, 20, 6);
+        let terminal_runtimes = TerminalRuntimeRegistry::new();
+
+        app.workspaces[0].tabs[0].layout.focus_pane(root_pane);
+        app.view.pane_infos = compute_pane_infos(
+            &app,
+            &terminal_runtimes,
+            area,
+            false,
+            crate::kitty_graphics::HostCellSize::default(),
+        );
+        let backend = ratatui::backend::TestBackend::new(20, 6);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| render_panes(&app, &terminal_runtimes, frame, area))
+            .unwrap();
+        let buffer = terminal.backend().buffer();
+        assert_eq!(buffer[(4, 3)].style().fg, Some(app.palette.accent));
+        assert_eq!(buffer[(16, 3)].style().fg, Some(app.palette.overlay0));
+
+        app.workspaces[0].tabs[0].layout.focus_pane(bottom_pane);
+        app.view.pane_infos = compute_pane_infos(
+            &app,
+            &terminal_runtimes,
+            area,
+            false,
+            crate::kitty_graphics::HostCellSize::default(),
+        );
+        let backend = ratatui::backend::TestBackend::new(20, 6);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| render_panes(&app, &terminal_runtimes, frame, area))
+            .unwrap();
+        let buffer = terminal.backend().buffer();
+        assert_eq!(buffer[(4, 3)].style().fg, Some(app.palette.overlay0));
+        assert_eq!(buffer[(16, 3)].style().fg, Some(app.palette.accent));
+    }
+
+    #[tokio::test]
+    async fn single_pane_grid_split_renders_solid_cross_junction() {
+        let mut app = AppState::test_new();
+        let mut workspace = Workspace::test_new("test");
+        let root_pane = workspace.tabs[0].root_pane;
+        let top_right = workspace.test_split(ratatui::layout::Direction::Horizontal);
+        workspace.tabs[0].layout.focus_pane(root_pane);
+        let bottom_left = workspace.test_split(ratatui::layout::Direction::Vertical);
+        workspace.tabs[0].layout.focus_pane(top_right);
+        let bottom_right = workspace.test_split(ratatui::layout::Direction::Vertical);
+
+        for (pane, label) in [
+            (root_pane, b"top-left\n".as_slice()),
+            (top_right, b"top-right\n".as_slice()),
+            (bottom_left, b"bottom-left\n".as_slice()),
+            (bottom_right, b"bottom-right\n".as_slice()),
+        ] {
+            workspace.tabs[0].runtimes.insert(
+                pane,
+                TerminalRuntime::test_with_scrollback_bytes(10, 4, 128, label),
+            );
+        }
+        app.workspaces = vec![workspace];
+        app.active = Some(0);
+        app.pane_border_style = crate::app::state::PaneBorderStyle::Single;
+
+        let area = Rect::new(0, 0, 20, 6);
+        let terminal_runtimes = TerminalRuntimeRegistry::new();
+        app.view.pane_infos = compute_pane_infos(
+            &app,
+            &terminal_runtimes,
+            area,
+            false,
+            crate::kitty_graphics::HostCellSize::default(),
+        );
+
+        let backend = ratatui::backend::TestBackend::new(20, 6);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| render_panes(&app, &terminal_runtimes, frame, area))
+            .unwrap();
+
+        assert_eq!(terminal.backend().buffer()[(10, 3)].symbol(), "┼");
     }
 
     #[tokio::test]

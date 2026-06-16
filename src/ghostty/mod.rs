@@ -337,6 +337,23 @@ pub enum CellColor {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CellUnderlineStyle {
+    #[default]
+    None,
+    Single,
+    Double,
+    Curly,
+    Dotted,
+    Dashed,
+}
+
+impl CellUnderlineStyle {
+    pub fn is_underlined(self) -> bool {
+        !matches!(self, Self::None)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct CellStyle {
     pub fg_color: Option<CellColor>,
     pub bg_color: Option<CellColor>,
@@ -349,7 +366,7 @@ pub struct CellStyle {
     pub invisible: bool,
     pub strikethrough: bool,
     pub overline: bool,
-    pub underlined: bool,
+    pub underline: CellUnderlineStyle,
 }
 
 impl From<ffi::GhosttyStyle> for CellStyle {
@@ -366,8 +383,19 @@ impl From<ffi::GhosttyStyle> for CellStyle {
             invisible: value.invisible,
             strikethrough: value.strikethrough,
             overline: value.overline,
-            underlined: value.underline != 0,
+            underline: cell_underline_style_from_ghostty(value.underline),
         }
+    }
+}
+
+fn cell_underline_style_from_ghostty(underline: std::os::raw::c_int) -> CellUnderlineStyle {
+    match underline as ffi::GhosttySgrUnderline {
+        ffi::GhosttySgrUnderline_GHOSTTY_SGR_UNDERLINE_SINGLE => CellUnderlineStyle::Single,
+        ffi::GhosttySgrUnderline_GHOSTTY_SGR_UNDERLINE_DOUBLE => CellUnderlineStyle::Double,
+        ffi::GhosttySgrUnderline_GHOSTTY_SGR_UNDERLINE_CURLY => CellUnderlineStyle::Curly,
+        ffi::GhosttySgrUnderline_GHOSTTY_SGR_UNDERLINE_DOTTED => CellUnderlineStyle::Dotted,
+        ffi::GhosttySgrUnderline_GHOSTTY_SGR_UNDERLINE_DASHED => CellUnderlineStyle::Dashed,
+        _ => CellUnderlineStyle::None,
     }
 }
 

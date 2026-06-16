@@ -84,6 +84,31 @@ pub enum ToastClipboardPosition {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
 #[serde(rename_all = "lowercase")]
+pub enum TabNumberDisplayConfig {
+    #[default]
+    Auto,
+    Always,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum PaneBorderStyleConfig {
+    #[default]
+    Boxed,
+    Single,
+}
+
+impl PaneBorderStyleConfig {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Boxed => "boxed",
+            Self::Single => "single",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[serde(rename_all = "lowercase")]
 pub enum AgentPanelScopeConfig {
     Current,
     #[default]
@@ -428,6 +453,10 @@ pub struct UiConfig {
     pub mobile_width_threshold: u16,
     /// Capture mouse input for Herdr's mouse UI. Default: true.
     pub mouse_capture: bool,
+    /// Show current tab numbers in the tab bar. Saved values are "auto" or "always". Default: "auto".
+    pub show_tab_numbers: TabNumberDisplayConfig,
+    /// Pane border style. Saved values are "boxed" or "single". Default: "boxed".
+    pub pane_border_style: PaneBorderStyleConfig,
     /// Modifier that lets right-click gestures pass through to pane apps. Empty disables it.
     pub right_click_passthrough_modifier: RightClickPassthroughModifierConfig,
     /// Force a full host-terminal redraw when the outer terminal regains focus. Default: true.
@@ -620,6 +649,8 @@ impl Default for UiConfig {
             sidebar_max_width: 36,
             mobile_width_threshold: DEFAULT_MOBILE_WIDTH_THRESHOLD,
             mouse_capture: true,
+            show_tab_numbers: TabNumberDisplayConfig::Auto,
+            pane_border_style: PaneBorderStyleConfig::Boxed,
             right_click_passthrough_modifier: RightClickPassthroughModifierConfig::default(),
             redraw_on_focus_gained: true,
             mouse_scroll_lines: None,
@@ -820,6 +851,22 @@ show_agent_labels_on_pane_borders = true
     }
 
     #[test]
+    fn pane_border_style_defaults_boxed_and_parses_single() {
+        let default_config = Config::default();
+        assert_eq!(
+            default_config.ui.pane_border_style,
+            PaneBorderStyleConfig::Boxed
+        );
+
+        let toml = r#"
+[ui]
+pane_border_style = "single"
+"#;
+        let config: Config = toml::from_str(toml).unwrap();
+        assert_eq!(config.ui.pane_border_style, PaneBorderStyleConfig::Single);
+    }
+
+    #[test]
     fn worktrees_directory_defaults_and_parses() {
         let default_config = Config::default();
         assert_eq!(default_config.worktrees.directory, "~/.herdr/worktrees");
@@ -952,6 +999,22 @@ mouse_capture = false
 "#;
         let config: Config = toml::from_str(toml).unwrap();
         assert!(!config.ui.mouse_capture);
+    }
+
+    #[test]
+    fn show_tab_numbers_defaults_auto_and_parses_always() {
+        let default_config = Config::default();
+        assert_eq!(
+            default_config.ui.show_tab_numbers,
+            TabNumberDisplayConfig::Auto
+        );
+
+        let toml = r#"
+[ui]
+show_tab_numbers = "always"
+"#;
+        let config: Config = toml::from_str(toml).unwrap();
+        assert_eq!(config.ui.show_tab_numbers, TabNumberDisplayConfig::Always);
     }
 
     #[test]

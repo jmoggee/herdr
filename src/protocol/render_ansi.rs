@@ -263,6 +263,40 @@ fn color_to_sgr_bg(val: u32) -> String {
     }
 }
 
+fn color_to_sgr_underline(val: u32) -> String {
+    let tag = (val >> 24) & 0xFF;
+    match tag {
+        0x00 => match val & 0xFF {
+            0x00 => "59".to_owned(),
+            0x01 => "58;5;0".to_owned(),
+            0x02 => "58;5;1".to_owned(),
+            0x03 => "58;5;2".to_owned(),
+            0x04 => "58;5;3".to_owned(),
+            0x05 => "58;5;4".to_owned(),
+            0x06 => "58;5;5".to_owned(),
+            0x07 => "58;5;6".to_owned(),
+            0x08 => "58;5;7".to_owned(),
+            0x09 => "58;5;8".to_owned(),
+            0x0A => "58;5;9".to_owned(),
+            0x0B => "58;5;10".to_owned(),
+            0x0C => "58;5;11".to_owned(),
+            0x0D => "58;5;12".to_owned(),
+            0x0E => "58;5;13".to_owned(),
+            0x0F => "58;5;14".to_owned(),
+            0x10 => "58;5;15".to_owned(),
+            _ => "59".to_owned(),
+        },
+        0x01 => format!("58;5;{}", val & 0xFF),
+        0x02 => {
+            let r = (val >> 16) & 0xFF;
+            let g = (val >> 8) & 0xFF;
+            let b = val & 0xFF;
+            format!("58;2;{r};{g};{b}")
+        }
+        _ => "59".to_owned(),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Modifier → SGR
 // ---------------------------------------------------------------------------
@@ -315,16 +349,31 @@ fn modifier_to_sgr_parts(val: u16) -> Vec<&'static str> {
     parts
 }
 
+fn underline_style_to_sgr_part(style: u8) -> Option<&'static str> {
+    match style {
+        1 => Some("4"),
+        2 => Some("4:2"),
+        3 => Some("4:3"),
+        4 => Some("4:4"),
+        5 => Some("4:5"),
+        _ => None,
+    }
+}
+
 /// Builds a complete SGR escape sequence for a cell's style.
-fn build_sgr(fg: u32, bg: u32, modifier: u16) -> String {
+fn build_sgr(fg: u32, bg: u32, underline_color: u32, modifier: u16, underline_style: u8) -> String {
     let mut parts = vec!["0".to_owned()];
     parts.extend(
         modifier_to_sgr_parts(modifier)
             .into_iter()
             .map(str::to_owned),
     );
+    if let Some(underline) = underline_style_to_sgr_part(underline_style) {
+        parts.push(underline.to_owned());
+    }
     parts.push(color_to_sgr_fg(fg));
     parts.push(color_to_sgr_bg(bg));
+    parts.push(color_to_sgr_underline(underline_color));
     format!("\x1b[{}m", parts.join(";"))
 }
 
@@ -338,7 +387,9 @@ fn cells_equal(a: &CellData, b: &CellData) -> bool {
     a.symbol == b.symbol
         && a.fg == b.fg
         && a.bg == b.bg
+        && a.underline_color == b.underline_color
         && a.modifier == b.modifier
+        && a.underline_style == b.underline_style
         && a.hyperlink == b.hyperlink
     // Skip flag is only for ratatui internal use, not visual.
 }
@@ -574,7 +625,13 @@ fn write_all_cells(writer: &mut impl Write, frame: &FrameData) {
             let _ = write!(writer, "\x1b[{};{}H", row + 1, col + 1);
 
             // Set style.
-            let sgr = build_sgr(cell.fg, cell.bg, cell.modifier);
+            let sgr = build_sgr(
+                cell.fg,
+                cell.bg,
+                cell.underline_color,
+                cell.modifier,
+                cell.underline_style,
+            );
             let _ = writer.write_all(sgr.as_bytes());
 
             write_hyperlink_if_changed(
@@ -664,7 +721,13 @@ fn write_cell(
 
     let _ = write!(writer, "\x1b[{};{}H", row + 1, col + 1);
 
-    let sgr = build_sgr(cell.fg, cell.bg, cell.modifier);
+    let sgr = build_sgr(
+        cell.fg,
+        cell.bg,
+        cell.underline_color,
+        cell.modifier,
+        cell.underline_style,
+    );
     if sgr != *last_sgr {
         let _ = writer.write_all(sgr.as_bytes());
         *last_sgr = sgr;
@@ -684,7 +747,9 @@ fn cells_visually_equal(
     cell.symbol == prev_cell.symbol
         && cell.fg == prev_cell.fg
         && cell.bg == prev_cell.bg
+        && cell.underline_color == prev_cell.underline_color
         && cell.modifier == prev_cell.modifier
+        && cell.underline_style == prev_cell.underline_style
         && sanitized_cell_hyperlink_uri(sanitized_hyperlinks, cell)
             == sanitized_cell_hyperlink_uri(prev_sanitized_hyperlinks, prev_cell)
     // Skip flag is only for ratatui internal use, not visual.
@@ -755,7 +820,9 @@ mod tests {
             symbol: symbol.to_owned(),
             fg,
             bg,
+            underline_color: 0,
             modifier,
+            underline_style: 0,
             skip: false,
             hyperlink: None,
         }
@@ -809,6 +876,11 @@ mod tests {
     }
 
     #[test]
+    fn color_to_sgr_underline_rgb() {
+        assert_eq!(color_to_sgr_underline(0x02_11_22_33), "58;2;17;34;51");
+    }
+
+    #[test]
     fn modifier_to_sgr_parts_bold() {
         let parts = modifier_to_sgr_parts(1); // BOLD
         assert!(parts.contains(&"1"));
@@ -828,7 +900,7 @@ mod tests {
 
     #[test]
     fn build_sgr_produces_valid_sequence() {
-        let sgr = build_sgr(0x00_00_00_02, 0x00_00_00_01, 1); // fg=Red, bg=Black, bold
+        let sgr = build_sgr(0x00_00_00_02, 0x00_00_00_01, 0, 1, 0); // fg=Red, bg=Black, bold
         assert!(sgr.starts_with("\x1b["));
         assert!(sgr.ends_with("m"));
         assert!(sgr.contains("0")); // reset existing style first
@@ -838,8 +910,62 @@ mod tests {
     }
 
     #[test]
+    fn build_sgr_preserves_curly_underline_shape() {
+        let sgr = build_sgr(0x00_00_00_00, 0x00_00_00_00, 0, 8, 3);
+        assert!(
+            sgr.contains("4:3"),
+            "SGR did not contain undercurl: {sgr:?}"
+        );
+    }
+
+    #[test]
+    fn build_sgr_preserves_underline_color() {
+        let sgr = build_sgr(0x00_00_00_00, 0x00_00_00_00, 0x02_11_22_33, 8, 3);
+        assert!(
+            sgr.contains("58;2;17;34;51"),
+            "SGR did not contain underline color: {sgr:?}"
+        );
+    }
+
+    #[test]
+    fn blit_frame_preserves_curly_underline_shape() {
+        let mut cell = make_cell("U", 0, 0, 8);
+        cell.underline_style = 3;
+        let frame = make_frame(1, 1, vec![cell]);
+
+        let mut output = Vec::new();
+        blit_frame_to(&mut output, &frame, None);
+
+        assert!(
+            output.windows(b"4:3".len()).any(|window| window == b"4:3"),
+            "output did not contain undercurl SGR: {output:?}"
+        );
+    }
+
+    #[test]
+    fn blit_frame_preserves_distinct_underline_color() {
+        let mut cell = make_cell("U", 0, 0, 8);
+        cell.underline_style = 3;
+        cell.underline_color = 0x02_11_22_33;
+        let frame = make_frame(1, 1, vec![cell]);
+
+        let mut output = Vec::new();
+        blit_frame_to(&mut output, &frame, None);
+
+        assert!(
+            output
+                .windows(b"58;2;17;34;51".len())
+                .any(|window| window == b"58;2;17;34;51"),
+            "output did not contain underline-color SGR: {output:?}"
+        );
+    }
+
+    #[test]
     fn build_sgr_resets_previous_modifiers_when_cell_is_plain() {
-        assert_eq!(build_sgr(0x00_00_00_00, 0x00_00_00_00, 0), "\x1b[0;39;49m");
+        assert_eq!(
+            build_sgr(0x00_00_00_00, 0x00_00_00_00, 0, 0, 0),
+            "\x1b[0;39;49;59m"
+        );
     }
 
     #[test]

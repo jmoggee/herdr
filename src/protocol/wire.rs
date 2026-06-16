@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 // ---------------------------------------------------------------------------
 
 /// Current protocol version. Bumped when wire format changes incompatibly.
-pub const PROTOCOL_VERSION: u32 = 14;
+pub const PROTOCOL_VERSION: u32 = 15;
 
 /// Maximum allowed frame payload size (2 MB). Frames larger than this are
 /// rejected to prevent denial-of-service via oversized length prefixes.
@@ -412,8 +412,14 @@ pub struct CellData {
     pub fg: u32,
     /// Background color as a packed u32.
     pub bg: u32,
+    /// Underline color as a packed u32.
+    #[serde(default)]
+    pub underline_color: u32,
     /// Bitmask of style modifiers (bold, italic, etc.).
     pub modifier: u16,
+    /// Underline shape: 0 none, 1 single, 2 double, 3 curly, 4 dotted, 5 dashed.
+    #[serde(default)]
+    pub underline_style: u8,
     /// Whether this cell should be skipped during diff-based rendering.
     pub skip: bool,
     /// Index into `FrameData::hyperlinks` for this cell's OSC 8 target, if any.
@@ -507,7 +513,9 @@ impl FrameData {
                     symbol: cell.symbol().to_owned(),
                     fg: color_to_u32(cell.fg),
                     bg: color_to_u32(cell.bg),
+                    underline_color: color_to_u32(cell.underline_color),
                     modifier: modifier_to_u16(cell.modifier),
+                    underline_style: underline_style_to_u8(cell.underline_style),
                     skip: cell.skip,
                     hyperlink,
                 });
@@ -545,7 +553,9 @@ impl FrameData {
                 cell.set_symbol(&cell_data.symbol);
                 cell.fg = u32_to_color(cell_data.fg);
                 cell.bg = u32_to_color(cell_data.bg);
+                cell.underline_color = u32_to_color(cell_data.underline_color);
                 cell.modifier = u16_to_modifier(cell_data.modifier);
+                cell.underline_style = u8_to_underline_style(cell_data.underline_style);
                 cell.skip = cell_data.skip;
             }
         }
@@ -718,6 +728,31 @@ fn u32_to_color(val: u32) -> ratatui::style::Color {
 /// Converts a ratatui `Modifier` bitmask to a u16 for wire transport.
 pub(crate) fn modifier_to_u16(modifier: ratatui::style::Modifier) -> u16 {
     modifier.bits()
+}
+
+/// Converts a ratatui underline shape to a compact wire value.
+pub(crate) fn underline_style_to_u8(style: ratatui::style::UnderlineStyle) -> u8 {
+    match style {
+        ratatui::style::UnderlineStyle::None => 0,
+        ratatui::style::UnderlineStyle::Single => 1,
+        ratatui::style::UnderlineStyle::Double => 2,
+        ratatui::style::UnderlineStyle::Curly => 3,
+        ratatui::style::UnderlineStyle::Dotted => 4,
+        ratatui::style::UnderlineStyle::Dashed => 5,
+    }
+}
+
+/// Converts a compact wire value back to a ratatui underline shape.
+#[cfg(test)]
+fn u8_to_underline_style(val: u8) -> ratatui::style::UnderlineStyle {
+    match val {
+        1 => ratatui::style::UnderlineStyle::Single,
+        2 => ratatui::style::UnderlineStyle::Double,
+        3 => ratatui::style::UnderlineStyle::Curly,
+        4 => ratatui::style::UnderlineStyle::Dotted,
+        5 => ratatui::style::UnderlineStyle::Dashed,
+        _ => ratatui::style::UnderlineStyle::None,
+    }
 }
 
 /// Converts a u16 back to a ratatui `Modifier`.
@@ -1173,7 +1208,9 @@ mod tests {
                     symbol: "H".into(),
                     fg: color_to_u32(Color::Red),
                     bg: color_to_u32(Color::Black),
+                    underline_color: color_to_u32(Color::Reset),
                     modifier: Modifier::BOLD.bits(),
+                    underline_style: 0,
                     skip: false,
                     hyperlink: None,
                 },
@@ -1181,7 +1218,9 @@ mod tests {
                     symbol: "i".into(),
                     fg: color_to_u32(Color::Green),
                     bg: color_to_u32(Color::Reset),
+                    underline_color: color_to_u32(Color::Reset),
                     modifier: Modifier::ITALIC.bits(),
+                    underline_style: 0,
                     skip: false,
                     hyperlink: None,
                 },
@@ -1189,7 +1228,9 @@ mod tests {
                     symbol: "!".into(),
                     fg: color_to_u32(Color::Rgb(255, 128, 0)),
                     bg: color_to_u32(Color::Indexed(220)),
+                    underline_color: color_to_u32(Color::Rgb(17, 34, 51)),
                     modifier: (Modifier::BOLD | Modifier::UNDERLINED).bits(),
+                    underline_style: 3,
                     skip: false,
                     hyperlink: Some(0),
                 },
@@ -1197,7 +1238,9 @@ mod tests {
                     symbol: " ".into(),
                     fg: color_to_u32(Color::Reset),
                     bg: color_to_u32(Color::Reset),
+                    underline_color: color_to_u32(Color::Reset),
                     modifier: Modifier::empty().bits(),
+                    underline_style: 0,
                     skip: true,
                     hyperlink: None,
                 },
@@ -1205,7 +1248,9 @@ mod tests {
                     symbol: "→".into(), // multi-byte grapheme
                     fg: color_to_u32(Color::Cyan),
                     bg: color_to_u32(Color::Blue),
+                    underline_color: color_to_u32(Color::Reset),
                     modifier: Modifier::REVERSED.bits(),
+                    underline_style: 0,
                     skip: false,
                     hyperlink: None,
                 },
@@ -1213,7 +1258,9 @@ mod tests {
                     symbol: "🦀".into(), // emoji, wide grapheme cluster
                     fg: color_to_u32(Color::Yellow),
                     bg: color_to_u32(Color::Magenta),
+                    underline_color: color_to_u32(Color::Reset),
                     modifier: Modifier::empty().bits(),
+                    underline_style: 0,
                     skip: false,
                     hyperlink: None,
                 },
@@ -1375,7 +1422,9 @@ mod tests {
                 },
                 fg: color_to_u32(Color::Rgb((i % 256) as u8, ((i / 256) % 256) as u8, 128)),
                 bg: color_to_u32(Color::Indexed((i % 256) as u8)),
+                underline_color: color_to_u32(Color::Reset),
                 modifier: ((i % 16) as u16),
+                underline_style: 0,
                 skip: i % 100 == 0,
                 hyperlink: None,
             })
@@ -1667,6 +1716,9 @@ mod tests {
         buffer.cell_mut((2, 0)).unwrap().set_symbol("!");
         buffer.cell_mut((2, 0)).unwrap().fg = Color::Rgb(255, 128, 0);
         buffer.cell_mut((2, 0)).unwrap().bg = Color::Indexed(220);
+        buffer.cell_mut((2, 0)).unwrap().underline_color = Color::Rgb(17, 34, 51);
+        buffer.cell_mut((2, 0)).unwrap().modifier = Modifier::UNDERLINED;
+        buffer.cell_mut((2, 0)).unwrap().underline_style = ratatui::style::UnderlineStyle::Curly;
 
         let cursor = CursorState {
             x: 1,
@@ -1694,6 +1746,11 @@ mod tests {
         assert_eq!(frame.cells[2].symbol, "!");
         assert_eq!(frame.cells[2].fg, color_to_u32(Color::Rgb(255, 128, 0)));
         assert_eq!(frame.cells[2].bg, color_to_u32(Color::Indexed(220)));
+        assert_eq!(
+            frame.cells[2].underline_color,
+            color_to_u32(Color::Rgb(17, 34, 51))
+        );
+        assert_eq!(frame.cells[2].underline_style, 3);
 
         let with_links = FrameData::from_ratatui_buffer_with_hyperlinks(
             &buffer,
@@ -1715,6 +1772,14 @@ mod tests {
         assert_eq!(restored.cell((1, 0)).unwrap().symbol(), "i");
         assert_eq!(restored.cell((2, 0)).unwrap().symbol(), "!");
         assert_eq!(restored.cell((2, 0)).unwrap().fg, Color::Rgb(255, 128, 0));
+        assert_eq!(
+            restored.cell((2, 0)).unwrap().underline_color,
+            Color::Rgb(17, 34, 51)
+        );
+        assert_eq!(
+            restored.cell((2, 0)).unwrap().underline_style,
+            ratatui::style::UnderlineStyle::Curly
+        );
     }
 
     #[test]
@@ -1725,7 +1790,9 @@ mod tests {
                     symbol: "X".into(),
                     fg: 0,
                     bg: 0,
+                    underline_color: 0,
                     modifier: 0,
+                    underline_style: 0,
                     skip: false,
                     hyperlink: None,
                 };

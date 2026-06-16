@@ -1,4 +1,7 @@
-use crate::config::{Keybinds, NewTerminalCwdConfig, SoundConfig, ToastConfig, ToastDelivery};
+use crate::config::{
+    Keybinds, NewTerminalCwdConfig, PaneBorderStyleConfig, SoundConfig, TabNumberDisplayConfig,
+    ToastConfig, ToastDelivery,
+};
 use crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::layout::{Direction, Rect};
 use ratatui::style::Color;
@@ -62,6 +65,8 @@ pub struct Palette {
     pub accent: Color,
     /// Background for floating panels, overlays, and modals.
     pub panel_bg: Color,
+    /// Background for the tab bar strip and inactive tabs.
+    pub tab_bar_bg: Color,
     /// Subtle surface background for selected/focused items.
     pub surface0: Color,
     /// Slightly lighter surface for hover/active states.
@@ -72,6 +77,8 @@ pub struct Palette {
     pub overlay0: Color,
     /// Slightly brighter overlay text.
     pub overlay1: Color,
+    /// Tab number prefixes in the tab bar.
+    pub tab_number: Color,
     /// Main text color — soft white.
     pub text: Color,
     /// Subdued text (workspace numbers, dim labels).
@@ -98,11 +105,13 @@ impl Palette {
         Self {
             accent: Color::Rgb(137, 180, 250), // blue
             panel_bg: Color::Rgb(24, 24, 37),
+            tab_bar_bg: Color::Rgb(24, 24, 37),
             surface0: Color::Rgb(49, 50, 68),
             surface1: Color::Rgb(69, 71, 90),
             surface_dim: Color::Rgb(30, 30, 46),
             overlay0: Color::Rgb(108, 112, 134),
             overlay1: Color::Rgb(127, 132, 156),
+            tab_number: Color::Rgb(108, 112, 134),
             text: Color::Rgb(205, 214, 244),
             subtext0: Color::Rgb(166, 173, 200),
             mauve: Color::Rgb(203, 166, 247),
@@ -120,11 +129,13 @@ impl Palette {
         Self {
             accent: Color::Rgb(30, 102, 245),
             panel_bg: Color::Rgb(239, 241, 245),
+            tab_bar_bg: Color::Rgb(239, 241, 245),
             surface0: Color::Rgb(204, 208, 218),
             surface1: Color::Rgb(188, 192, 204),
             surface_dim: Color::Rgb(230, 233, 239),
             overlay0: Color::Rgb(156, 160, 176),
             overlay1: Color::Rgb(140, 143, 161),
+            tab_number: Color::Rgb(156, 160, 176),
             text: Color::Rgb(76, 79, 105),
             subtext0: Color::Rgb(108, 111, 133),
             mauve: Color::Rgb(136, 57, 239),
@@ -142,11 +153,13 @@ impl Palette {
         Self {
             accent: Color::Blue,
             panel_bg: Color::Reset,
+            tab_bar_bg: Color::Reset,
             surface0: Color::Reset,
             surface1: Color::DarkGray,
             surface_dim: Color::DarkGray,
             overlay0: Color::Gray,
             overlay1: Color::White,
+            tab_number: Color::Gray,
             text: Color::Reset,
             subtext0: Color::Gray,
             mauve: Color::Gray,
@@ -164,11 +177,13 @@ impl Palette {
         Self {
             accent: Color::Rgb(122, 162, 247), // blue
             panel_bg: Color::Rgb(26, 27, 38),
+            tab_bar_bg: Color::Rgb(26, 27, 38),
             surface0: Color::Rgb(36, 40, 59),
             surface1: Color::Rgb(65, 72, 104),
             surface_dim: Color::Rgb(26, 27, 38),
             overlay0: Color::Rgb(86, 95, 137),
             overlay1: Color::Rgb(105, 113, 150),
+            tab_number: Color::Rgb(86, 95, 137),
             text: Color::Rgb(192, 202, 245),
             subtext0: Color::Rgb(169, 177, 214),
             mauve: Color::Rgb(187, 154, 247),
@@ -186,11 +201,13 @@ impl Palette {
         Self {
             accent: Color::Rgb(46, 125, 233),
             panel_bg: Color::Rgb(225, 226, 231),
+            tab_bar_bg: Color::Rgb(225, 226, 231),
             surface0: Color::Rgb(196, 200, 218),
             surface1: Color::Rgb(168, 174, 203),
             surface_dim: Color::Rgb(210, 211, 218),
             overlay0: Color::Rgb(137, 144, 179),
             overlay1: Color::Rgb(104, 112, 154),
+            tab_number: Color::Rgb(137, 144, 179),
             text: Color::Rgb(55, 96, 191),
             subtext0: Color::Rgb(97, 114, 176),
             mauve: Color::Rgb(120, 71, 189),
@@ -208,11 +225,13 @@ impl Palette {
         Self {
             accent: Color::Rgb(189, 147, 249), // purple
             panel_bg: Color::Rgb(40, 42, 54),
+            tab_bar_bg: Color::Rgb(40, 42, 54),
             surface0: Color::Rgb(68, 71, 90),
             surface1: Color::Rgb(98, 114, 164),
             surface_dim: Color::Rgb(40, 42, 54),
             overlay0: Color::Rgb(98, 114, 164),
             overlay1: Color::Rgb(130, 140, 180),
+            tab_number: Color::Rgb(98, 114, 164),
             text: Color::Rgb(248, 248, 242),
             subtext0: Color::Rgb(210, 210, 220),
             mauve: Color::Rgb(255, 121, 198), // pink
@@ -230,11 +249,13 @@ impl Palette {
         Self {
             accent: Color::Rgb(136, 192, 208), // frost
             panel_bg: Color::Rgb(46, 52, 64),
+            tab_bar_bg: Color::Rgb(46, 52, 64),
             surface0: Color::Rgb(59, 66, 82),
             surface1: Color::Rgb(67, 76, 94),
             surface_dim: Color::Rgb(46, 52, 64),
             overlay0: Color::Rgb(76, 86, 106),
             overlay1: Color::Rgb(100, 110, 130),
+            tab_number: Color::Rgb(76, 86, 106),
             text: Color::Rgb(236, 239, 244),
             subtext0: Color::Rgb(216, 222, 233),
             mauve: Color::Rgb(180, 142, 173),
@@ -252,11 +273,13 @@ impl Palette {
         Self {
             accent: Color::Rgb(215, 153, 33), // yellow
             panel_bg: Color::Rgb(40, 40, 40),
+            tab_bar_bg: Color::Rgb(40, 40, 40),
             surface0: Color::Rgb(60, 56, 54),
             surface1: Color::Rgb(80, 73, 69),
             surface_dim: Color::Rgb(40, 40, 40),
             overlay0: Color::Rgb(146, 131, 116),
             overlay1: Color::Rgb(168, 153, 132),
+            tab_number: Color::Rgb(146, 131, 116),
             text: Color::Rgb(235, 219, 178),
             subtext0: Color::Rgb(213, 196, 161),
             mauve: Color::Rgb(211, 134, 155),
@@ -274,11 +297,13 @@ impl Palette {
         Self {
             accent: Color::Rgb(7, 102, 120),
             panel_bg: Color::Rgb(251, 241, 199),
+            tab_bar_bg: Color::Rgb(251, 241, 199),
             surface0: Color::Rgb(235, 219, 178),
             surface1: Color::Rgb(213, 196, 161),
             surface_dim: Color::Rgb(242, 229, 188),
             overlay0: Color::Rgb(146, 131, 116),
             overlay1: Color::Rgb(124, 111, 100),
+            tab_number: Color::Rgb(146, 131, 116),
             text: Color::Rgb(60, 56, 54),
             subtext0: Color::Rgb(80, 73, 69),
             mauve: Color::Rgb(143, 63, 113),
@@ -296,11 +321,13 @@ impl Palette {
         Self {
             accent: Color::Rgb(97, 175, 239), // blue
             panel_bg: Color::Rgb(40, 44, 52),
+            tab_bar_bg: Color::Rgb(40, 44, 52),
             surface0: Color::Rgb(44, 49, 58),
             surface1: Color::Rgb(62, 68, 81),
             surface_dim: Color::Rgb(40, 44, 52),
             overlay0: Color::Rgb(92, 99, 112),
             overlay1: Color::Rgb(115, 122, 135),
+            tab_number: Color::Rgb(92, 99, 112),
             text: Color::Rgb(171, 178, 191),
             subtext0: Color::Rgb(150, 156, 168),
             mauve: Color::Rgb(198, 120, 221),
@@ -318,11 +345,13 @@ impl Palette {
         Self {
             accent: Color::Rgb(64, 120, 242),
             panel_bg: Color::Rgb(250, 250, 250),
+            tab_bar_bg: Color::Rgb(250, 250, 250),
             surface0: Color::Rgb(240, 240, 241),
             surface1: Color::Rgb(229, 229, 230),
             surface_dim: Color::Rgb(245, 245, 246),
             overlay0: Color::Rgb(160, 161, 167),
             overlay1: Color::Rgb(104, 107, 119),
+            tab_number: Color::Rgb(160, 161, 167),
             text: Color::Rgb(56, 58, 66),
             subtext0: Color::Rgb(104, 107, 119),
             mauve: Color::Rgb(166, 38, 164),
@@ -340,11 +369,13 @@ impl Palette {
         Self {
             accent: Color::Rgb(38, 139, 210), // blue
             panel_bg: Color::Rgb(0, 43, 54),
+            tab_bar_bg: Color::Rgb(0, 43, 54),
             surface0: Color::Rgb(7, 54, 66),
             surface1: Color::Rgb(88, 110, 117),
             surface_dim: Color::Rgb(0, 43, 54),
             overlay0: Color::Rgb(88, 110, 117),
             overlay1: Color::Rgb(101, 123, 131),
+            tab_number: Color::Rgb(88, 110, 117),
             text: Color::Rgb(147, 161, 161),
             subtext0: Color::Rgb(131, 148, 150),
             mauve: Color::Rgb(211, 54, 130),
@@ -362,11 +393,13 @@ impl Palette {
         Self {
             accent: Color::Rgb(38, 139, 210),
             panel_bg: Color::Rgb(253, 246, 227),
+            tab_bar_bg: Color::Rgb(253, 246, 227),
             surface0: Color::Rgb(238, 232, 213),
             surface1: Color::Rgb(147, 161, 161),
             surface_dim: Color::Rgb(238, 232, 213),
             overlay0: Color::Rgb(147, 161, 161),
             overlay1: Color::Rgb(88, 110, 117),
+            tab_number: Color::Rgb(147, 161, 161),
             text: Color::Rgb(101, 123, 131),
             subtext0: Color::Rgb(131, 148, 150),
             mauve: Color::Rgb(211, 54, 130),
@@ -384,11 +417,13 @@ impl Palette {
         Self {
             accent: Color::Rgb(126, 156, 216), // blue
             panel_bg: Color::Rgb(31, 31, 40),
+            tab_bar_bg: Color::Rgb(31, 31, 40),
             surface0: Color::Rgb(42, 42, 55),
             surface1: Color::Rgb(54, 54, 70),
             surface_dim: Color::Rgb(31, 31, 40),
             overlay0: Color::Rgb(114, 113, 105),
             overlay1: Color::Rgb(135, 134, 125),
+            tab_number: Color::Rgb(114, 113, 105),
             text: Color::Rgb(220, 215, 186),
             subtext0: Color::Rgb(200, 195, 170),
             mauve: Color::Rgb(149, 127, 184),
@@ -406,11 +441,13 @@ impl Palette {
         Self {
             accent: Color::Rgb(77, 105, 155),
             panel_bg: Color::Rgb(242, 236, 188),
+            tab_bar_bg: Color::Rgb(242, 236, 188),
             surface0: Color::Rgb(220, 213, 172),
             surface1: Color::Rgb(201, 203, 209),
             surface_dim: Color::Rgb(213, 206, 163),
             overlay0: Color::Rgb(160, 156, 172),
             overlay1: Color::Rgb(138, 137, 128),
+            tab_number: Color::Rgb(160, 156, 172),
             text: Color::Rgb(84, 84, 100),
             subtext0: Color::Rgb(67, 67, 108),
             mauve: Color::Rgb(98, 76, 131),
@@ -428,11 +465,13 @@ impl Palette {
         Self {
             accent: Color::Rgb(196, 167, 231), // iris
             panel_bg: Color::Rgb(25, 23, 36),
+            tab_bar_bg: Color::Rgb(25, 23, 36),
             surface0: Color::Rgb(31, 29, 46),
             surface1: Color::Rgb(38, 35, 58),
             surface_dim: Color::Rgb(25, 23, 36),
             overlay0: Color::Rgb(110, 106, 134),
             overlay1: Color::Rgb(144, 140, 170),
+            tab_number: Color::Rgb(110, 106, 134),
             text: Color::Rgb(224, 222, 244),
             subtext0: Color::Rgb(200, 197, 220),
             mauve: Color::Rgb(196, 167, 231),  // iris
@@ -450,11 +489,13 @@ impl Palette {
         Self {
             accent: Color::Rgb(144, 122, 169),
             panel_bg: Color::Rgb(250, 244, 237),
+            tab_bar_bg: Color::Rgb(250, 244, 237),
             surface0: Color::Rgb(242, 233, 225),
             surface1: Color::Rgb(255, 250, 243),
             surface_dim: Color::Rgb(242, 233, 225),
             overlay0: Color::Rgb(152, 147, 165),
             overlay1: Color::Rgb(121, 117, 147),
+            tab_number: Color::Rgb(152, 147, 165),
             text: Color::Rgb(70, 66, 97),
             subtext0: Color::Rgb(121, 117, 147),
             mauve: Color::Rgb(144, 122, 169),
@@ -472,11 +513,13 @@ impl Palette {
         Self {
             accent: Color::Rgb(255, 199, 153),
             panel_bg: Color::Rgb(26, 26, 26),
+            tab_bar_bg: Color::Rgb(26, 26, 26),
             surface0: Color::Rgb(35, 35, 35),
             surface1: Color::Rgb(40, 40, 40),
             surface_dim: Color::Rgb(16, 16, 16),
             overlay0: Color::Rgb(92, 92, 92),
             overlay1: Color::Rgb(126, 126, 126),
+            tab_number: Color::Rgb(92, 92, 92),
             text: Color::Rgb(255, 255, 255),
             subtext0: Color::Rgb(160, 160, 160),
             mauve: Color::Rgb(255, 209, 168),
@@ -523,6 +566,9 @@ impl Palette {
         if let Some(c) = &custom.panel_bg {
             self.panel_bg = parse_color(c);
         }
+        if let Some(c) = &custom.tab_bar_bg {
+            self.tab_bar_bg = parse_color(c);
+        }
         if let Some(c) = &custom.surface0 {
             self.surface0 = parse_color(c);
         }
@@ -537,6 +583,9 @@ impl Palette {
         }
         if let Some(c) = &custom.overlay1 {
             self.overlay1 = parse_color(c);
+        }
+        if let Some(c) = &custom.tab_number {
+            self.tab_number = parse_color(c);
         }
         if let Some(c) = &custom.text {
             self.text = parse_color(c);
@@ -837,6 +886,31 @@ pub enum AgentPanelScope {
     CurrentWorkspace,
     #[default]
     AllWorkspaces,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum PaneBorderStyle {
+    #[default]
+    Boxed,
+    Single,
+}
+
+impl From<PaneBorderStyleConfig> for PaneBorderStyle {
+    fn from(value: PaneBorderStyleConfig) -> Self {
+        match value {
+            PaneBorderStyleConfig::Boxed => Self::Boxed,
+            PaneBorderStyleConfig::Single => Self::Single,
+        }
+    }
+}
+
+impl From<PaneBorderStyle> for PaneBorderStyleConfig {
+    fn from(value: PaneBorderStyle) -> Self {
+        match value {
+            PaneBorderStyle::Boxed => Self::Boxed,
+            PaneBorderStyle::Single => Self::Single,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1350,6 +1424,8 @@ pub struct AppState {
     pub mouse_scroll_lines: usize,
     pub confirm_close: bool,
     pub prompt_new_tab_name: bool,
+    pub show_tab_numbers: TabNumberDisplayConfig,
+    pub pane_border_style: PaneBorderStyle,
     pub show_agent_labels_on_pane_borders: bool,
     pub pane_history_persistence: bool,
     /// Expose the focused pane's cursor anchor to the outer terminal even when
@@ -1697,6 +1773,8 @@ impl AppState {
             mouse_scroll_lines: crate::config::DEFAULT_MOUSE_SCROLL_LINES,
             confirm_close: true,
             prompt_new_tab_name: true,
+            show_tab_numbers: TabNumberDisplayConfig::Auto,
+            pane_border_style: PaneBorderStyle::Boxed,
             show_agent_labels_on_pane_borders: false,
             pane_history_persistence: false,
             reveal_hidden_cursor_for_cjk_ime: false,
@@ -2135,6 +2213,33 @@ mod tests {
                 "theme should resolve: {name}"
             );
         }
+    }
+
+    #[test]
+    fn custom_theme_can_override_tab_number_color() {
+        let mut palette = Palette::catppuccin();
+        let custom = crate::config::CustomThemeColors {
+            tab_number: Some("#5c5c5c".into()),
+            ..Default::default()
+        };
+
+        palette = palette.with_overrides(&custom);
+
+        assert_eq!(palette.tab_number, Color::Rgb(92, 92, 92));
+    }
+
+    #[test]
+    fn custom_theme_can_override_tab_bar_background_color() {
+        let mut palette = Palette::terminal();
+        let custom = crate::config::CustomThemeColors {
+            tab_bar_bg: Some("#101010".into()),
+            ..Default::default()
+        };
+
+        palette = palette.with_overrides(&custom);
+
+        assert_eq!(palette.tab_bar_bg, Color::Rgb(16, 16, 16));
+        assert_eq!(palette.panel_bg, Color::Reset);
     }
 
     #[test]

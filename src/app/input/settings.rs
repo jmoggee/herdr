@@ -17,6 +17,7 @@ pub(super) enum SettingsAction {
     SaveSound(bool),
     SaveToastDelivery(ToastDelivery),
     SaveAgentBorderLabels(bool),
+    SavePaneBorderStyle(crate::config::PaneBorderStyleConfig),
     SavePaneHistory(bool),
     SaveSwitchAsciiInputSourceInPrefix(bool),
     InstallRecommendedIntegrations,
@@ -47,6 +48,7 @@ impl App {
                 SettingsAction::SaveAgentBorderLabels(enabled) => {
                     self.save_agent_border_labels(enabled)
                 }
+                SettingsAction::SavePaneBorderStyle(style) => self.save_pane_border_style(style),
                 SettingsAction::SavePaneHistory(enabled) => {
                     self.save_pane_history_persistence(enabled)
                 }
@@ -223,11 +225,23 @@ pub(super) fn update_settings_state(state: &mut AppState, key: KeyEvent) -> Opti
         },
         SettingsSection::PaneLabels => match key.code {
             KeyCode::Up | KeyCode::Char('k') | KeyCode::Down | KeyCode::Char('j') => {
-                state.settings.list.selected = 1 - state.settings.list.selected.min(1);
+                if matches!(key.code, KeyCode::Up | KeyCode::Char('k')) {
+                    state.settings.list.move_prev();
+                } else {
+                    state.settings.list.move_next(4);
+                }
             }
             KeyCode::Enter | KeyCode::Char(' ') => {
-                let enabled = state.settings.list.selected == 0;
-                return Some(SettingsAction::SaveAgentBorderLabels(enabled));
+                return match state.settings.list.selected {
+                    0 => Some(SettingsAction::SaveAgentBorderLabels(true)),
+                    1 => Some(SettingsAction::SaveAgentBorderLabels(false)),
+                    2 => Some(SettingsAction::SavePaneBorderStyle(
+                        crate::config::PaneBorderStyleConfig::Single,
+                    )),
+                    _ => Some(SettingsAction::SavePaneBorderStyle(
+                        crate::config::PaneBorderStyleConfig::Boxed,
+                    )),
+                };
             }
             KeyCode::BackTab | KeyCode::Left | KeyCode::Char('h') => {
                 state.settings.section = SettingsSection::Toast;
@@ -395,7 +409,7 @@ impl AppState {
             }
             SettingsSection::PaneLabels => {
                 let list_y = area.y + 3;
-                if row >= list_y && row < list_y + 2 {
+                if row >= list_y && row < list_y + 4 {
                     Some((row - list_y) as usize)
                 } else {
                     None
@@ -445,10 +459,16 @@ impl AppState {
                             let delivery = toast_delivery_for_index(idx);
                             Some(SettingsAction::SaveToastDelivery(delivery))
                         }
-                        SettingsSection::PaneLabels => {
-                            let enabled = idx == 0;
-                            Some(SettingsAction::SaveAgentBorderLabels(enabled))
-                        }
+                        SettingsSection::PaneLabels => match idx {
+                            0 => Some(SettingsAction::SaveAgentBorderLabels(true)),
+                            1 => Some(SettingsAction::SaveAgentBorderLabels(false)),
+                            2 => Some(SettingsAction::SavePaneBorderStyle(
+                                crate::config::PaneBorderStyleConfig::Single,
+                            )),
+                            _ => Some(SettingsAction::SavePaneBorderStyle(
+                                crate::config::PaneBorderStyleConfig::Boxed,
+                            )),
+                        },
                         SettingsSection::Experiments => experiment_toggle_action(self, idx),
                         SettingsSection::Integrations => None,
                     };
@@ -533,6 +553,27 @@ mod tests {
 
         assert_eq!(action, Some(SettingsAction::SaveSound(true)));
         assert!(!state.sound.enabled);
+        assert_eq!(state.mode, Mode::Settings);
+    }
+
+    #[test]
+    fn settings_pane_labels_toggles_single_pane_borders() {
+        let mut state = state_with_workspaces(&["test"]);
+        state.pane_border_style = crate::app::state::PaneBorderStyle::Boxed;
+        open_settings_at(&mut state, SettingsSection::PaneLabels);
+        state.settings.list.selected = 2;
+
+        let action = update_settings_state(
+            &mut state,
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()),
+        );
+
+        assert_eq!(
+            action,
+            Some(SettingsAction::SavePaneBorderStyle(
+                crate::config::PaneBorderStyleConfig::Single
+            ))
+        );
         assert_eq!(state.mode, Mode::Settings);
     }
 

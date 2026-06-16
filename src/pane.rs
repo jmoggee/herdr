@@ -1,6 +1,8 @@
 use std::cell::Cell;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::OnceLock;
 use std::sync::{
     atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU64, Ordering},
     Arc, Mutex,
@@ -47,16 +49,67 @@ pub use self::{
 };
 
 const RELEASE_REACQUIRE_SUPPRESSION: std::time::Duration = std::time::Duration::from_secs(1);
-const PANE_TERM: &str = "xterm-256color";
+const PANE_TERM: &str = "xterm-herdr";
+const PANE_FALLBACK_TERM: &str = "xterm-256color";
 const PANE_COLORTERM: &str = "truecolor";
+const PANE_TERMINFO_SOURCE: &str = r#"xterm-herdr|Herdr terminal,
+  Smulx=\E[4:%p1%dm,
+  Setulc=\E[58:2::%p1%{65536}%/%d:%p1%{256}%/%{255}%&%d:%p1%{255}%&%d%;m,
+  Su,
+  use=xterm-256color,
+"#;
 
 fn apply_pane_terminal_env(cmd: &mut CommandBuilder) {
     // Each pane is rendered by herdr's own terminal layer, not the outer terminal
     // that launched the app. Advertising the inherited TERM leaks the host terminal
     // identity into shells and across SSH, which breaks redraw and cursor movement
     // when the remote side lacks matching terminfo entries.
-    cmd.env("TERM", PANE_TERM);
+    if let Some(terminfo_dir) = pane_terminfo_dir() {
+        cmd.env("TERM", PANE_TERM);
+        cmd.env("TERMINFO", terminfo_dir);
+    } else {
+        cmd.env("TERM", PANE_FALLBACK_TERM);
+    }
     cmd.env("COLORTERM", PANE_COLORTERM);
+}
+
+fn pane_terminfo_dir() -> Option<PathBuf> {
+    static TERMINFO_DIR: OnceLock<Option<PathBuf>> = OnceLock::new();
+    TERMINFO_DIR.get_or_init(ensure_pane_terminfo).clone()
+}
+
+fn ensure_pane_terminfo() -> Option<PathBuf> {
+    let terminfo_dir = crate::config::config_dir().join("terminfo");
+    let source_path = terminfo_dir.join("xterm-herdr.terminfo");
+    if let Err(err) = std::fs::create_dir_all(&terminfo_dir) {
+        warn!(error = %err, path = %terminfo_dir.display(), "failed to create pane terminfo directory");
+        return None;
+    }
+    if let Err(err) = std::fs::write(&source_path, PANE_TERMINFO_SOURCE) {
+        warn!(error = %err, path = %source_path.display(), "failed to write pane terminfo source");
+        return None;
+    }
+
+    match Command::new("tic")
+        .arg("-x")
+        .arg("-o")
+        .arg(&terminfo_dir)
+        .arg(&source_path)
+        .status()
+    {
+        Ok(status) if status.success() => Some(terminfo_dir),
+        Ok(status) => {
+            warn!(
+                ?status,
+                "failed to compile pane terminfo; falling back to xterm-256color"
+            );
+            None
+        }
+        Err(err) => {
+            warn!(error = %err, "failed to run tic for pane terminfo; falling back to xterm-256color");
+            None
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -2828,8 +2881,20 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn pane_terminal_identity_overrides_outer_terminal_env() {
-        let output = capture_shell_output("printf '%s\\n%s\\n' \"$TERM\" \"$COLORTERM\"", &[]);
-        assert_eq!(output, "xterm-256color\ntruecolor\n");
+        let output = capture_shell_output(
+            "printf '%s\\n%s\\n%s\\n' \"$TERM\" \"$COLORTERM\" \"${TERMINFO:-}\"",
+            &[],
+        );
+        let lines: Vec<&str> = output.lines().collect();
+        assert_eq!(lines.get(1), Some(&"truecolor"));
+        match lines.first().copied() {
+            Some("xterm-herdr") => assert!(
+                lines.get(2).is_some_and(|line| !line.is_empty()),
+                "xterm-herdr panes should receive TERMINFO"
+            ),
+            Some("xterm-256color") => {}
+            other => panic!("unexpected TERM value: {other:?}"),
+        }
     }
 
     #[cfg(unix)]

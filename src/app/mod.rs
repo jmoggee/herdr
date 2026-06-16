@@ -527,6 +527,8 @@ impl App {
             mouse_scroll_lines: config.ui.mouse_scroll_lines(),
             confirm_close: config.ui.confirm_close,
             prompt_new_tab_name: config.ui.prompt_new_tab_name,
+            show_tab_numbers: config.ui.show_tab_numbers,
+            pane_border_style: config.ui.pane_border_style.into(),
             show_agent_labels_on_pane_borders: config.ui.show_agent_labels_on_pane_borders,
             pane_history_persistence: config.experimental.pane_history,
             reveal_hidden_cursor_for_cjk_ime: config.experimental.reveal_hidden_cursor_for_cjk_ime,
@@ -1244,6 +1246,8 @@ impl App {
                     config.ui.right_click_passthrough_modifiers();
                 self.state.confirm_close = config.ui.confirm_close;
                 self.state.prompt_new_tab_name = config.ui.prompt_new_tab_name;
+                self.state.show_tab_numbers = config.ui.show_tab_numbers;
+                self.state.pane_border_style = config.ui.pane_border_style.into();
                 self.state.show_agent_labels_on_pane_borders =
                     config.ui.show_agent_labels_on_pane_borders;
                 self.state.agent_panel_scope =
@@ -2607,6 +2611,29 @@ mod tests {
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.contains("[experimental]"));
         assert!(content.contains("pane_history = true"));
+        assert!(app.state.config_diagnostic.is_none());
+
+        std::env::remove_var(crate::config::CONFIG_PATH_ENV_VAR);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn settings_save_pane_border_style_persists_then_applies_live_config() {
+        let _guard = config_env_lock().lock().unwrap();
+        let path = temp_config_path("settings-save-pane-border-style");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "onboarding = false\n").unwrap();
+        std::env::set_var(crate::config::CONFIG_PATH_ENV_VAR, &path);
+
+        let mut app = test_app();
+        assert_eq!(app.state.pane_border_style, state::PaneBorderStyle::Boxed);
+
+        app.save_pane_border_style(crate::config::PaneBorderStyleConfig::Single);
+
+        assert_eq!(app.state.pane_border_style, state::PaneBorderStyle::Single);
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("[ui]"));
+        assert!(content.contains("pane_border_style = \"single\""));
         assert!(app.state.config_diagnostic.is_none());
 
         std::env::remove_var(crate::config::CONFIG_PATH_ENV_VAR);

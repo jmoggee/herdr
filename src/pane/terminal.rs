@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use bytes::Bytes;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Color, Modifier, Style, UnderlineStyle};
 use ratatui::{layout::Rect, Frame};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
@@ -1814,7 +1814,13 @@ fn cell_data_from_style(symbol: String, style: Style) -> CellData {
         },
         fg: crate::protocol::color_to_u32(style.fg.unwrap_or(Color::Reset)),
         bg: crate::protocol::color_to_u32(style.bg.unwrap_or(Color::Reset)),
+        underline_color: crate::protocol::color_to_u32(
+            style.underline_color.unwrap_or(Color::Reset),
+        ),
         modifier: crate::protocol::modifier_to_u16(style.add_modifier),
+        underline_style: crate::protocol::underline_style_to_u8(
+            style.underline_style.unwrap_or(UnderlineStyle::None),
+        ),
         skip: false,
         hyperlink: None,
     }
@@ -1888,13 +1894,26 @@ fn ghostty_cell_style(
     if basic.style.blink {
         modifiers |= Modifier::SLOW_BLINK;
     }
-    if basic.style.underlined {
+    if basic.style.underline.is_underlined() {
         modifiers |= Modifier::UNDERLINED;
     }
     if basic.style.strikethrough {
         modifiers |= Modifier::CROSSED_OUT;
     }
-    style.add_modifier(modifiers)
+    style
+        .add_modifier(modifiers)
+        .underline_style(ratatui_underline_style(basic.style.underline))
+}
+
+fn ratatui_underline_style(underline: crate::ghostty::CellUnderlineStyle) -> UnderlineStyle {
+    match underline {
+        crate::ghostty::CellUnderlineStyle::None => UnderlineStyle::None,
+        crate::ghostty::CellUnderlineStyle::Single => UnderlineStyle::Single,
+        crate::ghostty::CellUnderlineStyle::Double => UnderlineStyle::Double,
+        crate::ghostty::CellUnderlineStyle::Curly => UnderlineStyle::Curly,
+        crate::ghostty::CellUnderlineStyle::Dotted => UnderlineStyle::Dotted,
+        crate::ghostty::CellUnderlineStyle::Dashed => UnderlineStyle::Dashed,
+    }
 }
 
 #[derive(Debug)]
@@ -3408,8 +3427,7 @@ mod tests {
         let pane = GhosttyPaneTerminal::new(terminal, tx.clone()).unwrap();
         let pane_id = PaneId::from_raw(1);
 
-        let result =
-            pane.process_pty_bytes(pane_id, 0, b"\x1bP+q6E6F7065;536D756C78;4D7\x1b\\", &tx);
+        let result = pane.process_pty_bytes(pane_id, 0, b"\x1bP+q6E6F7065;4D7\x1b\\", &tx);
 
         assert!(result.terminal_responses.is_empty());
         assert!(rx.try_recv().is_err());
@@ -3422,11 +3440,17 @@ mod tests {
         let pane = GhosttyPaneTerminal::new(terminal, tx.clone()).unwrap();
         let pane_id = PaneId::from_raw(1);
 
-        let result = pane.process_pty_bytes(pane_id, 0, b"\x1bP+q5375;536574756C63\x1b\\", &tx);
+        let result = pane.process_pty_bytes(
+            pane_id,
+            0,
+            b"\x1bP+q536D756C78;5375;536574756C63\x1b\\",
+            &tx,
+        );
 
         assert_eq!(
             result.terminal_responses,
             vec![
+                expected_xtgettcap_response("536D756C78", Some(b"\\E[4:%p1%dm")),
                 expected_xtgettcap_response("5375", None),
                 expected_xtgettcap_response(
                     "536574756C63",
@@ -3456,6 +3480,27 @@ mod tests {
         let style = terminal.backend().buffer()[(0, 0)].style();
         assert!(style.add_modifier.contains(Modifier::UNDERLINED));
         assert_eq!(style.underline_color, Some(Color::Rgb(17, 34, 51)));
+    }
+
+    #[test]
+    fn render_preserves_curly_underline_style() {
+        let (tx, _rx) = mpsc::channel(4);
+        let terminal = crate::ghostty::Terminal::new(20, 5, 0).unwrap();
+        let pane = GhosttyPaneTerminal::new(terminal, tx).unwrap();
+        {
+            let mut core = pane.core.lock().unwrap();
+            core.terminal.write(b"\x1b[4:3mU\x1b[4:0m");
+        }
+
+        let backend = ratatui::backend::TestBackend::new(20, 5);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| pane.render(frame, Rect::new(0, 0, 20, 5), false))
+            .unwrap();
+
+        let style = terminal.backend().buffer()[(0, 0)].style();
+        assert!(style.add_modifier.contains(Modifier::UNDERLINED));
+        assert_eq!(style.underline_style, Some(UnderlineStyle::Curly));
     }
 
     #[test]

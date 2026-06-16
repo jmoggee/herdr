@@ -19,9 +19,9 @@ pub use self::{
     },
     model::{
         validated_sidebar_bounds, AgentPanelScopeConfig, Config, ConfigReloadReport,
-        ConfigReloadStatus, KeysConfig, NewTerminalCwdConfig, ShellModeConfig,
-        ToastClipboardPosition, ToastConfig, ToastDelivery, ToastHerdrPosition,
-        UpdateChannelConfig, MAX_TOAST_DELAY_SECONDS,
+        ConfigReloadStatus, KeysConfig, NewTerminalCwdConfig, PaneBorderStyleConfig,
+        ShellModeConfig, TabNumberDisplayConfig, ToastClipboardPosition, ToastConfig,
+        ToastDelivery, ToastHerdrPosition, UpdateChannelConfig, MAX_TOAST_DELAY_SECONDS,
     },
     sound::SoundConfig,
     theme::{parse_color, CustomThemeColors, ThemeConfig},

@@ -260,6 +260,8 @@ You can override individual colors:
 [theme.custom]
 panel_bg = "reset"
 accent = "#a6e3a1"
+tab_number = "darkgray"
+tab_bar_bg = "#101010"
 green = "#a6e3a1"
 blue = "#89b4fa"
 red = "#f38ba8"
@@ -281,6 +283,8 @@ sidebar_min_width = 18
 sidebar_max_width = 36
 mobile_width_threshold = 64
 mouse_capture = true
+show_tab_numbers = "auto"
+pane_border_style = "boxed"
 right_click_passthrough_modifier = ""
 redraw_on_focus_gained = true
 mouse_scroll_lines = 3
@@ -300,6 +304,10 @@ accent = "cyan"
 `confirm_close` controls whether closing a workspace asks for confirmation. `prompt_new_tab_name` controls whether new tabs ask for a label first.
 
 Set `mouse_capture = false` if you want your terminal to handle normal clicks, such as command-clicking URLs. With mouse capture enabled, Ctrl-click opens pane links when your terminal sends that modified click to Herdr. This includes macOS; Cmd-click is not reported separately from plain click while Herdr captures mouse input. Use Shift-Ctrl-click on Linux or Shift-Cmd-click on macOS for the terminal-native bypass path.
+
+Set `show_tab_numbers = "always"` if you want renamed tabs to keep their current switch number in the tab bar. Auto-named numbered tabs are not duplicated, so tab 2 still shows `2` instead of `2 2`.
+
+Set `pane_border_style = "single"` for tmux-style internal split dividers without an outer pane frame. The focused pane keeps the same line weight and is shown with the accent color. With a simple two-pane split, one half of the shared divider is highlighted so the active side stays visible. The default `boxed` style keeps Herdr's existing full pane boxes and thick active terminal border.
 
 Set `right_click_passthrough_modifier = "ctrl"` if you want Ctrl-right-click, hold, and drag gestures inside mouse-reporting pane apps to reach the app instead of opening Herdr's pane menu. The default is empty, which disables this passthrough. Supported modifiers are `ctrl`, `alt`, `cmd`, `super`, `meta`, and `hyper`; `shift` is rejected because many terminals reserve Shift+mouse for their own mouse bypass.
 
