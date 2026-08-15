@@ -101,6 +101,21 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 # panel_bg = "#1e1e2e"
 # text = "#cdd6f4"
 
+# Color the desktop tab row's elements individually, for matching an existing
+# status line such as tmux's. Anything left unset follows the base theme.
+# bar_bg is the row itself; number_* is a tab's number chip; the unprefixed
+# keys are the tab body; active_* is the focused tab.
+# [theme.tabs]
+# bar_bg = "#16161e"
+# fg = "#c0caf5"
+# bg = "#2f3549"
+# number_fg = "#1a1b26"
+# number_bg = "#787c99"
+# active_fg = "#c0caf5"
+# active_bg = "#414868"
+# active_number_fg = "#1a1b26"
+# active_number_bg = "#bb9af7"
+
 [terminal]
 # Executable used for new interactive panes.
 # Empty means $SHELL, then /bin/sh.
@@ -312,6 +327,11 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 
 # Desktop tab row placement: "top" or "bottom".
 # tab_bar_position = "top"
+
+# When a tab shows its number as its own chip. The number is the tab's position,
+# which is also its prefix+<n> switch key, so it renumbers as tabs are closed.
+# "auto" chips named tabs only, "always" chips every tab, "never" chips none.
+# tab_numbers = "auto"
 
 # Ordered status entries at the right edge of the desktop tab bar.
 # Supported types: zoom, hostname, datetime, text, and command.
