@@ -9,6 +9,7 @@
     rustdoc::all
 )]
 pub mod bindings;
+pub mod sgr;
 
 use std::cell::Cell;
 use std::collections::hash_map::DefaultHasher;
