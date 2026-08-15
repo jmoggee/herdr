@@ -17,6 +17,8 @@ use serde::Deserialize;
 #[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub struct TabThemeConfig {
+    /// The row itself, behind and around the tabs. tmux's `status-style bg`.
+    pub bar_bg: Option<String>,
     /// Inactive tab body.
     pub fg: Option<String>,
     pub bg: Option<String>,
@@ -34,6 +36,7 @@ pub struct TabThemeConfig {
 /// Tab colors resolved to terminal colors, ready for rendering.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct TabTheme {
+    pub bar_bg: Option<ratatui::style::Color>,
     pub fg: Option<ratatui::style::Color>,
     pub bg: Option<ratatui::style::Color>,
     pub active_fg: Option<ratatui::style::Color>,
@@ -48,6 +51,7 @@ impl TabThemeConfig {
     pub fn resolve(&self) -> TabTheme {
         let parse = |value: &Option<String>| value.as_deref().map(super::parse_color);
         TabTheme {
+            bar_bg: parse(&self.bar_bg),
             fg: parse(&self.fg),
             bg: parse(&self.bg),
             active_fg: parse(&self.active_fg),
@@ -73,6 +77,7 @@ mod tests {
     #[test]
     fn resolves_every_element_independently() {
         let config = TabThemeConfig {
+            bar_bg: Some("#16161e".into()),
             fg: Some("#c0caf5".into()),
             bg: Some("#2f3549".into()),
             active_fg: Some("#c0caf5".into()),
@@ -85,6 +90,7 @@ mod tests {
 
         let resolved = config.resolve();
 
+        assert_eq!(resolved.bar_bg, Some(Color::Rgb(0x16, 0x16, 0x1e)));
         assert_eq!(resolved.bg, Some(Color::Rgb(0x2f, 0x35, 0x49)));
         assert_eq!(resolved.number_bg, Some(Color::Rgb(0x78, 0x7c, 0x99)));
         assert_eq!(
@@ -97,6 +103,7 @@ mod tests {
     #[test]
     fn a_tmux_window_status_style_can_be_expressed_in_full() {
         // Mirrors a tmux config of the shape
+        //   status-style                 'bg=G'
         //   window-status-format         '#[fg=A,bg=B] #I #[fg=C,bg=D] #W '
         //   window-status-current-format '#[fg=A,bg=E] #I #[fg=C,bg=F] #W '
         // Every element tmux styles separately has a key here, so a tab row can
@@ -104,6 +111,7 @@ mod tests {
         let config: crate::config::Config = toml::from_str(
             r##"
 [theme.tabs]
+bar_bg = "#16161e"
 number_fg = "#1a1b26"
 number_bg = "#787c99"
 fg = "#c0caf5"
@@ -118,6 +126,7 @@ active_bg = "#414868"
 
         let resolved = config.theme.tabs.as_ref().unwrap().resolve();
 
+        assert_eq!(resolved.bar_bg, Some(Color::Rgb(0x16, 0x16, 0x1e)));
         assert_eq!(resolved.number_bg, Some(Color::Rgb(0x78, 0x7c, 0x99)));
         assert_eq!(resolved.number_fg, Some(Color::Rgb(0x1a, 0x1b, 0x26)));
         assert_eq!(resolved.bg, Some(Color::Rgb(0x2f, 0x35, 0x49)));
