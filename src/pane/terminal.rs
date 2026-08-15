@@ -23,6 +23,7 @@ mod windows_recent_fallback;
 
 use super::cursor::{CursorPositionSettleState, DecscusrTracker, CURSOR_POSITION_SETTLE};
 use super::{
+    decrqss::{DecrqssQueryTracker, DecrqssResponse},
     input::{
         ghostty_key_event_from_terminal_key, ghostty_mouse_encoder_for_terminal,
         ghostty_mouse_event_from_button_kind, ghostty_mouse_event_from_motion_kind,
@@ -210,6 +211,7 @@ pub(crate) struct GhosttyPaneCore {
     pub child_default_background_changed: bool,
     pub osc_debug_tracker: OscDebugTracker,
     pub agent_osc_state: AgentOscStateTracker,
+    pub decrqss_query_tracker: DecrqssQueryTracker,
     decscusr_tracker: DecscusrTracker,
     cursor_settle_state: CursorPositionSettleState,
     windows_powershell_prompt_cwd_reporting: bool,
@@ -1158,6 +1160,8 @@ impl GhosttyPaneTerminal {
         let mut key_encoder =
             crate::ghostty::KeyEncoder::new().map_err(|e| std::io::Error::other(e.to_string()))?;
         key_encoder.set_from_terminal(&terminal);
+        let decrqss_query_tracker =
+            DecrqssQueryTracker::new().map_err(|e| std::io::Error::other(e.to_string()))?;
         Ok(Self {
             core: Mutex::new(GhosttyPaneCore {
                 #[cfg(test)]
@@ -1178,6 +1182,7 @@ impl GhosttyPaneTerminal {
                 child_default_background_changed: false,
                 osc_debug_tracker: OscDebugTracker::default(),
                 agent_osc_state: AgentOscStateTracker::default(),
+                decrqss_query_tracker,
                 decscusr_tracker: DecscusrTracker::default(),
                 cursor_settle_state: CursorPositionSettleState::default(),
                 windows_powershell_prompt_cwd_reporting: false,
@@ -1405,9 +1410,11 @@ impl GhosttyPaneTerminal {
             .observe(filtered_bytes.as_ref());
         core.c1_xtgettcap_tracker.observe(filtered_bytes.as_ref());
         let c1_xtgettcap_responses = core.c1_xtgettcap_tracker.drain_pending();
+        core.decrqss_query_tracker.observe(filtered_bytes.as_ref());
         core.decscusr_tracker.observe(filtered_bytes.as_ref());
         let in_progress_default_color_event = core.default_color_event_tracker.in_progress_event();
         let default_color_events = core.default_color_event_tracker.drain_pending();
+        let decrqss_responses = core.decrqss_query_tracker.drain_pending();
         let write_started = crate::render_prof::timer();
         self.write_pty_bytes_with_ordered_responses(
             &mut core,
@@ -1415,6 +1422,7 @@ impl GhosttyPaneTerminal {
             default_color_events,
             in_progress_default_color_event,
             c1_xtgettcap_responses,
+            decrqss_responses,
             &mut terminal_responses,
         );
         let terminal_bells = core.terminal.take_bell_count();
@@ -1489,23 +1497,33 @@ impl GhosttyPaneTerminal {
         default_color_events: Vec<DefaultColorTrackedEvent>,
         in_progress_default_color_event: Option<DefaultColorEvent>,
         c1_xtgettcap_responses: Vec<C1XtgettcapResponse>,
+        decrqss_responses: Vec<DecrqssResponse>,
         terminal_responses: &mut Vec<Bytes>,
     ) {
-        // Only legacy C1 replies need merging; ordinary XTGETTCAP remains native.
-        let mut events: Vec<_> = default_color_events
-            .into_iter()
-            .map(OrderedColorOrC1Event::Color)
-            .chain(
-                c1_xtgettcap_responses
-                    .into_iter()
-                    .map(OrderedColorOrC1Event::C1),
-            )
-            .collect();
-        events.sort_by_key(OrderedColorOrC1Event::end_offset);
+        let mut events = Vec::with_capacity(
+            default_color_events.len() + c1_xtgettcap_responses.len() + decrqss_responses.len(),
+        );
+        events.extend(
+            default_color_events
+                .into_iter()
+                .map(OrderedPtyResponseEvent::DefaultColor),
+        );
+        events.extend(
+            c1_xtgettcap_responses
+                .into_iter()
+                .map(OrderedPtyResponseEvent::C1Xtgettcap),
+        );
+        events.extend(
+            decrqss_responses
+                .into_iter()
+                .map(OrderedPtyResponseEvent::Decrqss),
+        );
+        events.sort_by_key(OrderedPtyResponseEvent::end_offset);
         let mut written = 0;
         for event in events {
             let end_offset = event.end_offset().min(bytes.len());
-            if matches!(&event, OrderedColorOrC1Event::C1(response) if response.suppress_native) {
+            if matches!(&event, OrderedPtyResponseEvent::C1Xtgettcap(response) if response.suppress_native)
+            {
                 // Suppress only the unhook byte's replies, not earlier native queries.
                 let prefix_end = end_offset.saturating_sub(1).max(written);
                 if prefix_end > written {
@@ -1521,7 +1539,7 @@ impl GhosttyPaneTerminal {
                 written = end_offset;
             }
             match event {
-                OrderedColorOrC1Event::Color(event) => {
+                OrderedPtyResponseEvent::DefaultColor(event) => {
                     let replacement = respond_to_default_color_event(core, event.event);
                     if replacement.is_some() {
                         remove_last_matching_libghostty_color_reply(
@@ -1532,7 +1550,7 @@ impl GhosttyPaneTerminal {
                     terminal_responses.extend(libghostty_responses);
                     terminal_responses.extend(replacement);
                 }
-                OrderedColorOrC1Event::C1(response) => {
+                OrderedPtyResponseEvent::C1Xtgettcap(response) => {
                     if response.suppress_native {
                         libghostty_responses.retain(|reply| {
                             !reply.starts_with(b"\x1bP1+r") && !reply.starts_with(b"\x1bP0+r")
@@ -1542,6 +1560,10 @@ impl GhosttyPaneTerminal {
                     if !response.suppress_native {
                         terminal_responses.push(response.bytes);
                     }
+                }
+                OrderedPtyResponseEvent::Decrqss(response) => {
+                    terminal_responses.extend(libghostty_responses);
+                    terminal_responses.push(response.bytes);
                 }
             }
         }
@@ -3270,16 +3292,19 @@ fn ghostty_cell_style(
     style.add_modifier(modifiers)
 }
 
-enum OrderedColorOrC1Event {
-    Color(DefaultColorTrackedEvent),
-    C1(C1XtgettcapResponse),
+#[derive(Debug)]
+enum OrderedPtyResponseEvent {
+    DefaultColor(DefaultColorTrackedEvent),
+    C1Xtgettcap(C1XtgettcapResponse),
+    Decrqss(DecrqssResponse),
 }
 
-impl OrderedColorOrC1Event {
+impl OrderedPtyResponseEvent {
     fn end_offset(&self) -> usize {
         match self {
-            Self::Color(event) => event.end_offset,
-            Self::C1(response) => response.end_offset,
+            Self::DefaultColor(event) => event.end_offset,
+            Self::C1Xtgettcap(response) => response.end_offset,
+            Self::Decrqss(response) => response.end_offset,
         }
     }
 }
@@ -6460,6 +6485,40 @@ mod tests {
             ]
         );
         assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn process_pty_bytes_answers_neovim_extended_underline_probe() {
+        let (tx, mut rx) = mpsc::channel(4);
+        let terminal = crate::ghostty::Terminal::new(20, 5, 0).unwrap();
+        let pane = GhosttyPaneTerminal::new(terminal, tx.clone()).unwrap();
+        let pane_id = PaneId::from_raw(1);
+
+        let result = pane.process_pty_bytes(pane_id, 0, b"\x1b[4:3m\x1bP$qm\x1b\\\x1b[0m", &tx);
+
+        assert_eq!(
+            result.terminal_responses,
+            vec![Bytes::from_static(b"\x1bP1$r0;4:3m\x1b\\")]
+        );
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn process_pty_bytes_orders_decrqss_reply_before_following_xtgettcap_reply() {
+        let (tx, _rx) = mpsc::channel(4);
+        let terminal = crate::ghostty::Terminal::new(20, 5, 0).unwrap();
+        let pane = GhosttyPaneTerminal::new(terminal, tx.clone()).unwrap();
+        let pane_id = PaneId::from_raw(1);
+
+        let result = pane.process_pty_bytes(pane_id, 0, b"\x1bP$qm\x1b\\\x1bP+q5375\x1b\\", &tx);
+
+        assert_eq!(
+            result.terminal_responses,
+            vec![
+                Bytes::from_static(b"\x1bP1$r0m\x1b\\"),
+                expected_xtgettcap_response("5375", None),
+            ]
+        );
     }
 
     #[test]
