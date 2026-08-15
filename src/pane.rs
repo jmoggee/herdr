@@ -26,6 +26,7 @@ use crate::render_signal::RenderSignal;
 
 mod agent_detection;
 mod cursor;
+mod decrqss;
 mod input;
 mod kitty_keyboard;
 mod osc;
