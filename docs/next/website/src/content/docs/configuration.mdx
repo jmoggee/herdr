@@ -319,6 +319,7 @@ The chip takes its colors from the active theme. To match an existing status lin
 
 ```toml
 [theme.tabs]
+bar_bg = "#16161e"
 number_fg = "#1a1b26"
 number_bg = "#787c99"
 fg = "#c0caf5"
@@ -329,7 +330,7 @@ active_fg = "#c0caf5"
 active_bg = "#414868"
 ```
 
-`number_*` styles the chip and the unprefixed keys style the rest of the tab, each with an `active_*` counterpart for the focused tab. Any key you leave out keeps following the selected theme, so you can retint just the chip and leave the tab body alone. Values accept the same spellings as `theme.custom`.
+`number_*` styles the chip and the unprefixed keys style the rest of the tab, each with an `active_*` counterpart for the focused tab. `bar_bg` is the row itself, behind and around the tabs — tmux's `status-style` background, which is often a step darker than the terminal's own. Any key you leave out keeps following the selected theme, so you can retint just the chip and leave the tab body alone. Values accept the same spellings as `theme.custom`.
 
 Configure an ordered tmux-style status area at the right edge of the tab row:
 

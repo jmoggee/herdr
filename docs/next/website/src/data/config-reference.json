@@ -59,6 +59,12 @@
           "description": "Theme name used when `auto_switch` selects a light appearance."
         },
         {
+          "key": "theme.tabs.bar_bg",
+          "type": "color",
+          "default": "unset",
+          "description": "Background of the desktop tab row itself, behind and around the tabs. Unset follows the theme's panel background."
+        },
+        {
           "key": "theme.tabs.fg",
           "type": "color",
           "default": "unset",
