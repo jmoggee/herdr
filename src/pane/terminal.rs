@@ -3221,6 +3221,9 @@ fn cell_data_from_style(symbol: String, style: Style) -> CellData {
         fg: crate::protocol::color_to_u32(style.fg.unwrap_or(Color::Reset)),
         bg: crate::protocol::color_to_u32(style.bg.unwrap_or(Color::Reset)),
         modifier: crate::protocol::modifier_to_u16(style.add_modifier),
+        underline_color: crate::protocol::color_to_u32(
+            style.underline_color.unwrap_or(Color::Reset),
+        ),
         skip: false,
         hyperlink: None,
     }
