@@ -69,6 +69,9 @@ pub struct ThemeConfig {
     pub light_name: Option<String>,
     /// Custom overrides — applied on top of the selected base theme.
     pub custom: Option<CustomThemeColors>,
+    /// Per-element colors for the desktop tab row. Unset elements follow the
+    /// selected theme.
+    pub tabs: Option<super::tab_theme::TabThemeConfig>,
 }
 
 impl ThemeConfig {

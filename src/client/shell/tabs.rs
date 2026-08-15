@@ -4,6 +4,120 @@ const TAB_SCROLL_BUTTON_WIDTH: u16 = 3;
 const MIN_TAB_STRIP_WIDTH: u16 =
     MIN_TAB_WIDTH + NEW_TAB_WIDTH + TAB_SCROLL_BUTTON_WIDTH.saturating_mul(2);
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TabSegmentKind {
+    Number,
+    Name,
+    Zoom,
+}
+
+struct TabSegment {
+    kind: TabSegmentKind,
+    text: String,
+}
+
+// Tab numbers are positions, not the stable number embedded in public tab IDs.
+// The former is the `prefix+<n>` switch key and renumbers after a close or move.
+fn tab_segments(tab: &ClientShellTab, index: usize, numbers: TabNumberDisplay) -> Vec<TabSegment> {
+    let position = (index + 1).to_string();
+    let named = tab.label != position;
+    let chip = matches!(numbers, TabNumberDisplay::Always)
+        || matches!(numbers, TabNumberDisplay::Auto) && named;
+    let mut segments = Vec::with_capacity(3);
+    if chip {
+        segments.push(TabSegment {
+            kind: TabSegmentKind::Number,
+            text: format!(" {position} "),
+        });
+    }
+    if named || !chip {
+        segments.push(TabSegment {
+            kind: TabSegmentKind::Name,
+            text: tab.label.clone(),
+        });
+    }
+    if tab.zoomed {
+        segments.push(TabSegment {
+            kind: TabSegmentKind::Zoom,
+            text: "Z".to_owned(),
+        });
+    }
+    segments
+}
+
+fn segments_width(segments: &[TabSegment]) -> u16 {
+    segments
+        .iter()
+        .map(|segment| display_width(&segment.text))
+        .fold(0, u16::saturating_add)
+        .saturating_add(segments.len().saturating_sub(1).min(u16::MAX as usize) as u16)
+}
+
+fn tab_width(segments: &[TabSegment]) -> u16 {
+    if matches!(
+        segments.first().map(|segment| segment.kind),
+        Some(TabSegmentKind::Number)
+    ) {
+        segments_width(segments).saturating_add(u16::from(segments.len() > 1))
+    } else {
+        segments_width(segments)
+            .saturating_add(4)
+            .max(MIN_TAB_WIDTH)
+    }
+}
+
+fn tab_body_style(
+    palette: &Palette,
+    theme: &crate::config::TabTheme,
+    focused: bool,
+    custom_label: bool,
+) -> Style {
+    let style = if focused {
+        Style::default()
+            .fg(theme
+                .active_fg
+                .unwrap_or_else(|| panel_contrast_fg(palette)))
+            .bg(theme.active_bg.unwrap_or(palette.accent))
+    } else {
+        Style::default()
+            .fg(theme.fg.unwrap_or(if custom_label {
+                palette.overlay1
+            } else {
+                palette.overlay0
+            }))
+            .bg(theme.bg.unwrap_or(palette.surface0))
+    };
+    match (focused, custom_label) {
+        (true, true) => style.add_modifier(Modifier::BOLD),
+        (false, false) => style.add_modifier(Modifier::DIM),
+        _ => style,
+    }
+}
+
+fn tab_number_style(
+    palette: &Palette,
+    theme: &crate::config::TabTheme,
+    body: Style,
+    focused: bool,
+) -> Style {
+    let style = if focused {
+        Style::default()
+            .fg(theme.active_number_fg.unwrap_or(palette.accent))
+            .bg(theme
+                .active_number_bg
+                .unwrap_or_else(|| panel_contrast_fg(palette)))
+    } else {
+        Style::default()
+            .fg(theme.number_fg.unwrap_or(palette.text))
+            .bg(theme.number_bg.unwrap_or(palette.surface1))
+    };
+    if body.add_modifier.contains(Modifier::DIM) {
+        style.add_modifier(Modifier::DIM)
+    } else {
+        style
+    }
+}
+
 pub(crate) fn render_tab_bar(
     buffer: &mut Buffer,
     area: Rect,
@@ -21,12 +135,14 @@ pub(crate) fn render_tab_bar(
         .iter()
         .filter(|tab| Some(tab.workspace_id.as_str()) == snapshot.focused_workspace_id.as_deref())
         .collect::<Vec<_>>();
-    let desired_widths = tabs
+    let tab_segments = tabs
         .iter()
-        .map(|tab| {
-            let label = tab_label(tab);
-            display_width(&label).saturating_add(4).max(MIN_TAB_WIDTH)
-        })
+        .enumerate()
+        .map(|(index, tab)| tab_segments(tab, index, config.tab_numbers))
+        .collect::<Vec<_>>();
+    let desired_widths = tab_segments
+        .iter()
+        .map(|segments| tab_width(segments))
         .collect::<Vec<_>>();
     let content = tab_bar_content_area(snapshot, area);
     let mouse_chrome = config.mouse_capture;
@@ -92,7 +208,7 @@ pub(crate) fn render_tab_bar(
     let mut first_visible = None;
     let mut last_visible = None;
     for (index, tab) in tabs.iter().enumerate().skip(*tab_scroll) {
-        let name = tab_label(tab);
+        let segments = &tab_segments[index];
         let desired = desired_widths[index];
         let remaining = tab_right.saturating_sub(x);
         let width = desired.min(remaining);
@@ -100,29 +216,52 @@ pub(crate) fn render_tab_bar(
             break;
         }
         let rect = Rect::new(x, area.y, width, 1);
-        let style = if tab.focused {
-            let base = Style::default()
-                .fg(panel_contrast_fg(palette))
-                .bg(palette.accent);
-            if tab.custom_label {
-                base.add_modifier(Modifier::BOLD)
-            } else {
-                base
-            }
-        } else if tab.custom_label {
-            Style::default().fg(palette.overlay1).bg(palette.surface0)
-        } else {
-            Style::default().fg(palette.overlay0).bg(palette.surface0)
-        };
-        let padding = width.saturating_sub(display_width(&name));
-        let left = padding / 2;
-        let text = format!(
-            "{empty:left$}{name}{empty:right_padding$}",
-            empty = "",
-            left = left as usize,
-            right_padding = padding.saturating_sub(left) as usize,
+        let body = tab_body_style(
+            palette,
+            &config.theme_runtime.tabs,
+            tab.focused,
+            tab.custom_label,
         );
-        put_text(buffer, rect.x, rect.y, rect.width, &text, style);
+        let chip = tab_number_style(palette, &config.theme_runtime.tabs, body, tab.focused);
+        let has_chip = matches!(
+            segments.first().map(|segment| segment.kind),
+            Some(TabSegmentKind::Number)
+        );
+        let segment_width = segments_width(segments);
+        let mut segment_x = if has_chip {
+            rect.x
+        } else {
+            rect.x
+                .saturating_add(width.saturating_sub(segment_width) / 2)
+        };
+        for (segment_index, segment) in segments.iter().enumerate() {
+            let segment_width = display_width(&segment.text);
+            let style = if segment.kind == TabSegmentKind::Number {
+                chip
+            } else {
+                body
+            };
+            put_text(
+                buffer,
+                segment_x,
+                rect.y,
+                width.saturating_sub(segment_x.saturating_sub(rect.x)),
+                &segment.text,
+                style,
+            );
+            segment_x = segment_x.saturating_add(segment_width);
+            if segment_index + 1 < segments.len() {
+                put_text(
+                    buffer,
+                    segment_x,
+                    rect.y,
+                    width.saturating_sub(segment_x.saturating_sub(rect.x)),
+                    " ",
+                    body,
+                );
+                segment_x = segment_x.saturating_add(1);
+            }
+        }
         hits.tabs.push((rect, tab.tab_id.clone()));
         first_visible.get_or_insert(index);
         last_visible = Some(index);
@@ -370,15 +509,6 @@ fn max_tab_scroll(widths: &[u16], available: u16) -> usize {
     }
     start
 }
-
-fn tab_label(tab: &ClientShellTab) -> String {
-    if tab.zoomed {
-        format!("{} Z", tab.label)
-    } else {
-        tab.label.clone()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::max_tab_scroll;
