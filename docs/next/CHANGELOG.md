@@ -128,7 +128,7 @@
 
 ### Added
 - Named tabs now show their number as a chip in the desktop tab row, so the `prefix+<n>` switch key stays visible after a tab is renamed. Control it with `ui.tab_numbers = "auto" | "always" | "never"`.
-- Added `[theme.tabs]` to color the desktop tab row's chip and body separately for active and inactive tabs, so the tab row can be matched to an existing tmux status line. Unset elements keep following the selected theme.
+- Added `[theme.tabs]` to color the desktop tab row's bar, chip, and tab body separately for active and inactive tabs, so the tab row can be matched to an existing tmux status line. Unset elements keep following the selected theme.
 - CLI help now points coding agents to Herdr's plain-text guide, documentation index, and built-in control skill.
 - Added Qwen Code detection for idle, working, and user-confirmation states, plus optional native session restore. (#2730, #2743)
 - Herdr now keeps the outer terminal window title in sync with the session through `ui.window_title`, so window managers and terminal tab bars show the active workspace and the host the panes actually run on. (#2627, thanks @dhh)
