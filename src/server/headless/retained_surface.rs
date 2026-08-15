@@ -619,6 +619,7 @@ mod tests {
             fg: 0,
             bg: 0,
             modifier: 0,
+            underline_color: 0,
             skip: false,
             hyperlink: None,
         }

@@ -304,6 +304,33 @@ The sidebar is the main Herdr dashboard. Search `ui.` in the [Config reference](
 
 Set `tab_bar_position = "bottom"` under `[ui]` to place the desktop tab row below the terminal panes. Prefix, Navigate, Copy, and Resize mode bars temporarily replace the bottom tab row while active. The default is `"top"`.
 
+Set `tab_numbers` under `[ui]` to control when a tab's number appears as its own chip. The number is the tab's position, which is also its `prefix+<n>` switch key, so it renumbers automatically whenever tabs are closed or reordered.
+
+```toml
+[ui]
+tab_numbers = "auto"
+```
+
+- `"auto"` (default) shows a chip on named tabs. An unnamed tab already shows its number as its whole label, so it stays as it is.
+- `"always"` shows a chip on every tab. Unnamed tabs become a compact chip rather than repeating the number.
+- `"never"` shows no chip.
+
+The chip takes its colors from the active theme. To match an existing status line — a tmux `window-status-format`, for example — override the tab row's elements individually:
+
+```toml
+[theme.tabs]
+number_fg = "#1a1b26"
+number_bg = "#787c99"
+fg = "#c0caf5"
+bg = "#2f3549"
+active_number_fg = "#1a1b26"
+active_number_bg = "#bb9af7"
+active_fg = "#c0caf5"
+active_bg = "#414868"
+```
+
+`number_*` styles the chip and the unprefixed keys style the rest of the tab, each with an `active_*` counterpart for the focused tab. Any key you leave out keeps following the selected theme, so you can retint just the chip and leave the tab body alone. Values accept the same spellings as `theme.custom`.
+
 Configure an ordered tmux-style status area at the right edge of the tab row:
 
 ```toml

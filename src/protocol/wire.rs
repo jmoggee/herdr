@@ -2635,6 +2635,7 @@ mod tests {
                     fg: 1,
                     bg: 2,
                     modifier: 3,
+                    underline_color: 0,
                     skip: false,
                     hyperlink: None,
                 }],
