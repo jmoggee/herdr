@@ -59,6 +59,54 @@
           "description": "Theme name used when `auto_switch` selects a light appearance."
         },
         {
+          "key": "theme.tabs.fg",
+          "type": "color",
+          "default": "unset",
+          "description": "Text color of an inactive tab's body in the desktop tab row. Unset follows the theme."
+        },
+        {
+          "key": "theme.tabs.bg",
+          "type": "color",
+          "default": "unset",
+          "description": "Background of an inactive tab's body in the desktop tab row. Unset follows the theme."
+        },
+        {
+          "key": "theme.tabs.active_fg",
+          "type": "color",
+          "default": "unset",
+          "description": "Text color of the active tab's body in the desktop tab row. Unset follows the theme."
+        },
+        {
+          "key": "theme.tabs.active_bg",
+          "type": "color",
+          "default": "unset",
+          "description": "Background of the active tab's body in the desktop tab row. Unset follows the theme."
+        },
+        {
+          "key": "theme.tabs.number_fg",
+          "type": "color",
+          "default": "unset",
+          "description": "Text color of an inactive tab's number chip. Unset follows the theme."
+        },
+        {
+          "key": "theme.tabs.number_bg",
+          "type": "color",
+          "default": "unset",
+          "description": "Background of an inactive tab's number chip. Unset follows the theme."
+        },
+        {
+          "key": "theme.tabs.active_number_fg",
+          "type": "color",
+          "default": "unset",
+          "description": "Text color of the active tab's number chip. Unset follows the theme."
+        },
+        {
+          "key": "theme.tabs.active_number_bg",
+          "type": "color",
+          "default": "unset",
+          "description": "Background of the active tab's number chip. Unset follows the theme."
+        },
+        {
           "key": "theme.custom.accent",
           "type": "color",
           "default": "unset",
@@ -1007,6 +1055,17 @@
           "values": [
             "top",
             "bottom"
+          ]
+        },
+        {
+          "key": "ui.tab_numbers",
+          "type": "enum",
+          "default": "\"auto\"",
+          "description": "Show a tab's position as its own chip in the desktop tab row. The number is also the tab's prefix+<n> switch key.",
+          "values": [
+            "auto",
+            "always",
+            "never"
           ]
         },
         {
