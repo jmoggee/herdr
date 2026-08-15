@@ -259,6 +259,12 @@ fn theme_runtime_config(
         light_name: config.theme.light_name.clone().unwrap_or(default_light),
         auto_switch: config.theme.auto_switch,
         custom: config.theme.custom.clone(),
+        tabs: config
+            .theme
+            .tabs
+            .as_ref()
+            .map(crate::config::TabThemeConfig::resolve)
+            .unwrap_or_default(),
         legacy_accent: (use_legacy_ui_accent
             && config.ui.accent != "cyan"
             && config

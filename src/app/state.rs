@@ -701,6 +701,7 @@ pub struct ThemeRuntimeConfig {
     pub light_name: String,
     pub auto_switch: bool,
     pub custom: Option<crate::config::CustomThemeColors>,
+    pub tabs: crate::config::TabTheme,
     pub legacy_accent: Option<String>,
 }
 
@@ -1088,6 +1089,7 @@ impl AppState {
                 light_name: "catppuccin-latte".to_string(),
                 auto_switch: false,
                 custom: None,
+                tabs: crate::config::TabTheme::default(),
                 legacy_accent: None,
             },
             host_terminal_appearance: None,

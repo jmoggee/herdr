@@ -125,6 +125,23 @@ impl StatusIndicatorStyle {
     }
 }
 
+/// When the desktop tab row shows a tab's number as a distinct chip.
+///
+/// The number is always the tab's position, which is also its `prefix+<n>`
+/// switch key, so it renumbers whenever tabs are closed or reordered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum TabNumberDisplay {
+    /// Chip only where it adds information: named tabs. An unnamed tab already
+    /// shows its number as the whole label.
+    #[default]
+    Auto,
+    /// Chip on every tab. Unnamed tabs become a compact chip on their own.
+    Always,
+    /// No chip. Unnamed tabs still show their number as the label.
+    Never,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum HostCursorModeConfig {
@@ -948,6 +965,8 @@ pub struct UiConfig {
     pub hide_tab_bar_when_single_tab: bool,
     /// Desktop tab row placement. Default: top.
     pub tab_bar_position: TabBarPositionConfig,
+    /// When the desktop tab row shows a tab's number as a chip. Default: auto.
+    pub tab_numbers: TabNumberDisplay,
     /// Ordered entries shown at the right edge of the desktop tab row. Empty by default.
     pub tab_bar_right: Vec<TabBarRightEntryConfig>,
     /// Text inserted between visible right-side tab bar entries. Default: one space.
@@ -1180,6 +1199,7 @@ impl Default for UiConfig {
             show_agent_labels_on_pane_borders: false,
             hide_tab_bar_when_single_tab: false,
             tab_bar_position: TabBarPositionConfig::Top,
+            tab_numbers: TabNumberDisplay::default(),
             tab_bar_right: Vec::new(),
             tab_bar_right_separator: " ".into(),
             window_title: super::window_title::default_window_title(),
@@ -1470,6 +1490,26 @@ status_indicators = "symbols"
             .unwrap_err()
             .to_string();
         assert!(wrong_type.contains("\"auto\", \"always\", \"off\", or a legacy boolean"));
+    }
+
+    #[test]
+    fn tab_numbers_default_to_auto_and_parse_every_policy() {
+        assert_eq!(Config::default().ui.tab_numbers, TabNumberDisplay::Auto);
+
+        for (value, expected) in [
+            ("auto", TabNumberDisplay::Auto),
+            ("always", TabNumberDisplay::Always),
+            ("never", TabNumberDisplay::Never),
+        ] {
+            let config: Config = toml::from_str(&format!(
+                r#"
+[ui]
+tab_numbers = "{value}"
+"#,
+            ))
+            .unwrap();
+            assert_eq!(config.ui.tab_numbers, expected, "parsing {value}");
+        }
     }
 
     #[test]
