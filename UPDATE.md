@@ -1,6 +1,6 @@
 # Fork maintenance guide
 
-This fork (`jmoggee/herdr`) carries four commits on top of upstream
+This fork (`jmoggee/herdr`) carries five commits on top of upstream
 `herdrdev/herdr`. This file tells an agent what they are, why they exist, and
 what to verify after rebasing onto a newer upstream.
 
@@ -63,15 +63,29 @@ The `client_mode`, `cross_area`, and `multi_client` integration tests are
 of `CellData`, so a `CellData` field that is missing from those mirrors fails
 them with `InvalidIntegerType { expected: U16, found: U32 }`. That is ours.
 
-Confirm the set is unchanged rather than assuming: stash our work, run the same
-filter on a pristine tree, and compare. Anything failing beyond this list is ours.
+Confirm the set is unchanged rather than assuming, and do it with a pristine
+worktree rather than a stash — `git worktree add /tmp/herdr-pristine <upstream-sha>
+--detach`, run the same command there, and diff the two sorted failure lists.
+That keeps the rebased tree intact and lets both runs happen back to back.
+Anything failing beyond this list is ours.
+
+As of the rebase onto `a5c69bea` the total is **34**, and the fork's list is
+identical to pristine upstream's. Two details make a run readable:
+
+- Bound the hangs. `cases::plugins::plugin_install_*` can wedge indefinitely
+  under load. `--config-file` a profile with
+  `slow-timeout = { period = "60s", terminate-after = 4 }` so a stuck test is
+  killed instead of stalling the suite for an hour.
+- `client_mode`, `cross_area`, and `multi_client` passing is the signal that the
+  `CellData`/`CellWire` work survived. They are the fork's canary; treat any
+  failure there as ours until proven otherwise.
 
 `just check` cannot run fully here — the maintenance-script tests need
 `python3` and the integration-asset tests need `bun`, neither of which is in the
 dev shell. Run the cargo half plus `cargo fmt --check` and
 `cargo clippy --all-targets --locked -- -D warnings`.
 
-## The four commits
+## The five commits
 
 ### 1. `fix: carry pane underline colors to the host terminal` (refs #1252, #1169)
 
@@ -92,11 +106,35 @@ colored undercurls rendered in the text foreground color.
   the socket. `underline_color` sits between `modifier` and `skip` there too;
   bincode is positional, so the field order must match `CellData` exactly.
 
-No `PROTOCOL_VERSION` bump: source was already at 20 and both stable and preview
-publish 19, so the unreleased protocol absorbed the change. **Re-check this after
-a rebase** — if upstream has since published protocol 20, adding a field needs a
-bump. Compare `src/protocol/wire.rs::PROTOCOL_VERSION` against `website/latest.json`
-and `website/preview.json`.
+`PROTOCOL_VERSION` is **21**, bumped by this fork. It sat at 20 while 20 was
+still unpublished, and the unreleased protocol absorbed the new field. That
+stopped being true once upstream's preview channel published protocol 20 with
+its own narrower `CellData`: one version number would then have described two
+different wire formats, and a stock preview client would have passed the
+handshake and gone on to mis-decode every frame.
+
+A bump touches four things besides the constant, and missing any one of them
+fails a large and misleading block of tests:
+
+- `src/protocol/wire.rs::PROTOCOL_VERSION` — the constant itself.
+- `tests/support/mod.rs::CURRENT_PROTOCOL` — shared by `client_mode`,
+  `cross_area`, `multi_client`, `detach_reattach`, `server_headless`, and
+  `tests/cli/harness.rs`. Stale here fails about 30 tests at once, all with
+  `server should report current protocol version`.
+- `tests/api_ping.rs` and `tests/cli/sessions.rs` — hardcoded on purpose so that
+  a bump has to be acknowledged rather than absorbed.
+- `docs/next/api/herdr-api.schema.json` — generated; do not hand-edit. Regenerate
+  with `HERDR_UPDATE_API_SCHEMA=1 cargo nextest run generated_protocol_schema_artifact_is_current`.
+
+Leave upstream's `// Freeze the protocol 20 input envelope` comment and its
+frozen bytes in `wire.rs` alone. That test pins the *input* envelope, which this
+fork does not touch, so the bytes stay correct and rewriting them only invites a
+conflict.
+
+**Re-check after every rebase.** Compare `PROTOCOL_VERSION` against the
+`protocol` field in `website/latest.json` (stable) and `website/preview.json`
+(preview). Both are upstream's published release metadata and must never be
+edited here. If upstream has since published 21, bump again.
 
 ### 2. `fix: answer decrqss sgr queries in panes` (refs #1178)
 
@@ -152,6 +190,19 @@ Two invariants worth protecting:
 `[theme.tabs] bar_bg` detaches the row's background from `panel_bg`, which also
 paints menus, popups, and panel shells. Three sites paint the row (fill, status
 separator, status segments) and all route through `tab_bar_bg()`.
+
+### 5. `fix: bump the wire protocol for the pane underline color field`
+
+Added during the rebase onto upstream `a5c69bea`, when preview began publishing
+protocol 20. It carries `PROTOCOL_VERSION` 20 → 21 and the four fixture and
+artifact updates that a bump drags with it. The reasoning and the full list of
+sites are under commit 1 above, because the bump exists only to protect the
+`CellData` field that commit adds.
+
+It is a separate commit rather than a squash into commit 1 so the history shows
+that the bump became necessary at a specific rebase, not that it was always
+there. If a future rebase ever makes it unnecessary — upstream adding an
+equivalent field, say — this commit is the one to drop.
 
 ## Updating onto a newer upstream
 
