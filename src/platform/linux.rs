@@ -352,6 +352,10 @@ pub fn foreground_job(child_pid: u32) -> Option<ForegroundJob> {
     foreground_job_for_group(child_pid, process_group_id)
 }
 
+pub fn foreground_command_name(_child_pid: u32, job: &ForegroundJob) -> Option<String> {
+    super::foreground_job_command(job)
+}
+
 fn foreground_job_for_group(child_pid: u32, process_group_id: u32) -> Option<ForegroundJob> {
     let members = foreground_process_group_members(child_pid, process_group_id)?;
     foreground_job_from_members(

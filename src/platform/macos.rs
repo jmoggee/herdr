@@ -457,6 +457,10 @@ pub fn foreground_job(child_pid: u32) -> Option<ForegroundJob> {
     })
 }
 
+pub fn foreground_command_name(_child_pid: u32, job: &ForegroundJob) -> Option<String> {
+    super::foreground_job_command(job)
+}
+
 pub fn foreground_group_leader_job(process_group_id: u32) -> Option<ForegroundJob> {
     let info = process_bsdinfo(process_group_id)?;
     if info.pbi_pgid != process_group_id {

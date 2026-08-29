@@ -766,7 +766,7 @@ mod tests {
         assert_eq!(app.state.workspaces[0].tabs.len(), 1);
         assert_eq!(
             app.state.workspaces[0]
-                .tab_display_name(0, &app.state.terminals)
+                .tab_display_name(0, &app.state.terminals, app.state.automatic_tab_name_source,)
                 .as_deref(),
             Some("dev")
         );

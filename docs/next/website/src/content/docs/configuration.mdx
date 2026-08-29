@@ -315,6 +315,15 @@ tab_numbers = "auto"
 - `"always"` shows a chip on every tab. Unnamed tabs become a compact chip rather than repeating the number.
 - `"never"` shows no chip.
 
+Tabs are automatically named until you rename them. Choose whether those names use application-provided terminal titles or concise tmux-style foreground commands:
+
+```toml
+[ui]
+automatic_tab_name_source = "command"
+```
+
+`"terminal_title"` is the default. `"command"` produces labels such as `bash`, `nvim`, or `claude` and falls back to the launched shell until process detection completes. Process changes normally appear immediately; an executable that replaces another process in place can take a few seconds. An explicit rename stays fixed, and saving an empty rename restores automatic naming.
+
 The chip takes its colors from the active theme. To match an existing status line — a tmux `window-status-format`, for example — override the tab row's elements individually:
 
 ```toml

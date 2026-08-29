@@ -42,8 +42,30 @@ impl App {
             .as_ref()
             .is_some_and(|(template, _)| {
                 template.uses(WindowTitleToken::TerminalTitle)
-                    || template.uses(WindowTitleToken::Tab)
+                    || (self.state.automatic_tab_name_source
+                        == crate::config::AutomaticTabNameSource::TerminalTitle
+                        && template.uses(WindowTitleToken::Tab))
             })
+    }
+
+    pub(crate) fn window_title_uses_foreground_command_for(
+        &self,
+        pane_id: crate::layout::PaneId,
+    ) -> bool {
+        self.state.automatic_tab_name_source == crate::config::AutomaticTabNameSource::Command
+            && self
+                .window_title_template
+                .as_ref()
+                .is_some_and(|(template, _)| template.uses(WindowTitleToken::Tab))
+            && self
+                .state
+                .active
+                .and_then(|ws_idx| self.state.workspaces.get(ws_idx))
+                .is_some_and(|workspace| {
+                    workspace
+                        .active_tab()
+                        .is_some_and(|tab| tab.is_auto_named() && tab.layout.focused() == pane_id)
+                })
     }
 
     /// Renders the configured outer window title, or `None` when window titles
@@ -98,7 +120,11 @@ impl App {
                         self.state
                             .workspaces
                             .get(workspace_index)?
-                            .tab_display_name(tab_index, &self.state.terminals)
+                            .tab_display_name(
+                                tab_index,
+                                &self.state.terminals,
+                                self.state.automatic_tab_name_source,
+                            )
                     }) {
                         title.push_str(&name);
                     }

@@ -39,6 +39,42 @@ impl App {
                 segment_index,
                 result,
             } => self.handle_tab_bar_command_finished(generation, segment_index, result),
+            AppEvent::ForegroundCommandChanged { pane_id, command } => {
+                let affects_window_title = self.window_title_uses_foreground_command_for(pane_id);
+                let affects_active_tab_label = self
+                    .state
+                    .active
+                    .and_then(|ws_idx| self.state.workspaces.get(ws_idx))
+                    .and_then(|workspace| {
+                        workspace
+                            .tabs
+                            .iter()
+                            .find(|tab| tab.layout.focused() == pane_id)
+                    })
+                    .is_some_and(|tab| tab.is_auto_named());
+                let changed = self
+                    .state
+                    .workspaces
+                    .iter()
+                    .enumerate()
+                    .find_map(|(ws_idx, workspace)| {
+                        workspace
+                            .pane_state(pane_id)
+                            .map(|pane| (ws_idx, pane.attached_terminal_id.clone()))
+                    })
+                    .and_then(|(ws_idx, terminal_id)| {
+                        self.state
+                            .terminals
+                            .get_mut(&terminal_id)
+                            .map(|terminal| (ws_idx, terminal.set_foreground_command(command)))
+                    });
+                if let Some((ws_idx, true)) = changed {
+                    self.emit_pane_updated(ws_idx, pane_id);
+                    affects_active_tab_label || affects_window_title
+                } else {
+                    false
+                }
+            }
             ev @ AppEvent::TerminalBell { .. } => {
                 self.handle_internal_event(ev);
                 false

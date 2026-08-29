@@ -129,6 +129,7 @@ pub struct TerminalState {
     pub metadata_tokens: crate::metadata_tokens::MetadataTokens,
     pub persisted_agent_session: Option<crate::agent_resume::PersistedAgentSession>,
     pub terminal_title: Option<String>,
+    pub foreground_command: Option<String>,
     pub manual_label: Option<String>,
     pub agent_name: Option<String>,
     agent_name_owner: Option<AgentNameOwner>,
@@ -164,6 +165,7 @@ impl TerminalState {
             metadata_tokens: crate::metadata_tokens::MetadataTokens::default(),
             persisted_agent_session: None,
             terminal_title: None,
+            foreground_command: None,
             manual_label: None,
             agent_name: None,
             agent_name_owner: None,
@@ -238,6 +240,25 @@ impl TerminalState {
             raw_changed: true,
             stripped_changed,
         }
+    }
+
+    pub(crate) fn set_foreground_command(&mut self, command: Option<String>) -> bool {
+        if self.foreground_command == command {
+            return false;
+        }
+        self.foreground_command = command;
+        self.revision = self.revision.wrapping_add(1);
+        true
+    }
+
+    pub(crate) fn foreground_command_name(&self) -> Option<String> {
+        self.foreground_command.clone().or_else(|| {
+            self.launch_argv
+                .as_ref()
+                .and_then(|argv| argv.first())
+                .and_then(|command| std::path::Path::new(command).file_name())
+                .map(|command| command.to_string_lossy().into_owned())
+        })
     }
 
     pub fn with_launch_argv(mut self, argv: Vec<String>) -> Self {

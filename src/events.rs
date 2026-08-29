@@ -68,6 +68,11 @@ pub enum AppEvent {
         agent: Agent,
         observed_at: Instant,
     },
+    /// The pane's foreground process-group command changed.
+    ForegroundCommandChanged {
+        pane_id: PaneId,
+        command: Option<String>,
+    },
     /// Fallback detector state changed in a pane.
     StateChanged {
         pane_id: PaneId,
