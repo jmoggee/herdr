@@ -1452,6 +1452,18 @@ impl AppState {
                 })
                 .into_iter()
                 .collect(),
+            AppEvent::ForegroundCommandChanged { pane_id, command } => {
+                if let Some(terminal_id) = self.workspaces.iter().find_map(|workspace| {
+                    workspace
+                        .pane_state(pane_id)
+                        .map(|pane| pane.attached_terminal_id.clone())
+                }) {
+                    if let Some(terminal) = self.terminals.get_mut(&terminal_id) {
+                        terminal.set_foreground_command(command);
+                    }
+                }
+                Vec::new()
+            }
             AppEvent::StateChanged {
                 pane_id,
                 agent,

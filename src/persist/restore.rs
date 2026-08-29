@@ -1571,7 +1571,10 @@ mod tests {
         assert!(terminals[terminal_id].agent_name.is_none());
         assert_eq!(terminals[terminal_id].managed_agent_kind(), None);
         assert!(workspace
-            .pane_details(&terminals)
+            .pane_details(
+                &terminals,
+                crate::config::AutomaticTabNameSource::TerminalTitle,
+            )
             .into_iter()
             .all(|detail| detail.pane_id != agent_pane));
     }

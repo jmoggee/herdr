@@ -1387,6 +1387,29 @@ pub fn foreground_job(child_pid: u32) -> Option<ForegroundJob> {
     select_pane_foreground_job_cached(child_pid)
 }
 
+pub fn foreground_command_name(child_pid: u32, selected_job: &ForegroundJob) -> Option<String> {
+    foreground_command_name_from_snapshot(child_pid, selected_job, &cached_foreground_processes())
+}
+
+fn foreground_command_name_from_snapshot(
+    child_pid: u32,
+    selected_job: &ForegroundJob,
+    snapshot: &ProcessSnapshot,
+) -> Option<String> {
+    if selected_job.process_group_id != child_pid {
+        return super::foreground_job_command(selected_job);
+    }
+
+    snapshot
+        .children_by_parent
+        .get(&child_pid)
+        .and_then(|children| match children.as_slice() {
+            [index] => Some(snapshot.entries[*index].name.clone()),
+            _ => None,
+        })
+        .or_else(|| super::foreground_job_command(selected_job))
+}
+
 pub(crate) fn available_pane_shell(child_pid: u32) -> Option<String> {
     let snapshot = ProcessSnapshot::new(snapshot_processes());
     available_pane_shell_from_snapshot(child_pid, &snapshot)
@@ -4209,6 +4232,31 @@ mod tests {
 
         assert_eq!(job.process_group_id, 10);
         assert_eq!(job.processes[0].name, "powershell.exe");
+        assert_eq!(
+            super::foreground_command_name_from_snapshot(
+                10,
+                &job,
+                &super::ProcessSnapshot::new(entries),
+            )
+            .as_deref(),
+            Some("git.exe")
+        );
+    }
+
+    #[test]
+    fn windows_command_name_falls_back_to_shell_for_ambiguous_children() {
+        let entries = vec![
+            test_entry(10, 1, "powershell.exe", &["powershell.exe"]),
+            test_entry(20, 10, "git.exe", &["git.exe", "status"]),
+            test_entry(30, 10, "cargo.exe", &["cargo.exe", "check"]),
+        ];
+        let snapshot = super::ProcessSnapshot::new(entries);
+        let selected_job = super::foreground_job_from_entry(snapshot.entry(10).unwrap());
+
+        assert_eq!(
+            super::foreground_command_name_from_snapshot(10, &selected_job, &snapshot).as_deref(),
+            Some("powershell.exe")
+        );
     }
 
     #[test]

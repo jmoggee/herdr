@@ -1004,7 +1004,17 @@
           "key": "ui.prompt_new_tab_name",
           "type": "boolean",
           "default": "false",
-          "description": "Ask for a tab name before creating a new tab. Otherwise the tab dynamically follows its focused pane's terminal title until explicitly renamed; clearing the rename restores dynamic naming."
+          "description": "Ask for a tab name before creating a new tab. Otherwise the tab dynamically follows the configured automatic name source until explicitly renamed; clearing the rename restores dynamic naming."
+        },
+        {
+          "key": "ui.automatic_tab_name_source",
+          "type": "enum",
+          "default": "terminal_title",
+          "description": "Source for automatic tab labels. terminal_title preserves application-provided titles; command uses the concise foreground command, like tmux automatic rename.",
+          "values": [
+            "terminal_title",
+            "command"
+          ]
         },
         {
           "key": "ui.prompt_new_workspace_name",

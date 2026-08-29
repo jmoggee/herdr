@@ -489,6 +489,7 @@ impl App {
             prefix_mods,
             headless_size: config.headless_size(),
             agent_panel_sort,
+            automatic_tab_name_source: config.ui.automatic_tab_name_source,
             agent_view_override: None,
             sidebar_agents: config.ui.sidebar.agents.clone(),
             sidebar_spaces: config.ui.sidebar.spaces.clone(),
@@ -634,6 +635,9 @@ impl App {
         };
         app.configure_tab_bar_status(&config.ui.tab_bar_right, &config.ui.tab_bar_right_separator);
         app.configure_window_title(&config.ui.window_title);
+        app.terminal_runtimes.set_track_foreground_commands(
+            config.ui.automatic_tab_name_source == crate::config::AutomaticTabNameSource::Command,
+        );
         app
     }
 
@@ -672,6 +676,9 @@ impl App {
         app.state.workspaces = workspaces;
         app.state.terminals = terminals;
         app.terminal_runtimes = runtimes.into();
+        app.terminal_runtimes.set_track_foreground_commands(
+            config.ui.automatic_tab_name_source == crate::config::AutomaticTabNameSource::Command,
+        );
         app.state.active = snapshot
             .active
             .filter(|&idx| idx < app.state.workspaces.len());
@@ -857,6 +864,16 @@ impl App {
                 self.configure_window_title(&config.ui.window_title);
                 self.state.agent_panel_sort =
                     agent_panel_sort_from_config(config.ui.agent_panel_sort);
+                if self.state.automatic_tab_name_source != config.ui.automatic_tab_name_source {
+                    self.state.automatic_tab_name_source = config.ui.automatic_tab_name_source;
+                    for terminal in self.state.terminals.values_mut() {
+                        terminal.set_foreground_command(None);
+                    }
+                    self.terminal_runtimes.set_track_foreground_commands(
+                        config.ui.automatic_tab_name_source
+                            == crate::config::AutomaticTabNameSource::Command,
+                    );
+                }
                 self.state.sidebar_agents = config.ui.sidebar.agents.clone();
                 self.state.sidebar_spaces = config.ui.sidebar.spaces.clone();
                 self.state.sound = config.ui.sound.clone();
@@ -1103,6 +1120,58 @@ mod tests {
             generation.wrapping_add(1),
             Some("stale"),
         )));
+    }
+
+    #[test]
+    fn foreground_command_updates_command_named_tabs_only_when_visible() {
+        let mut app = test_app();
+        app.state.automatic_tab_name_source = crate::config::AutomaticTabNameSource::Command;
+        app.state.workspaces = vec![
+            Workspace::test_new("visible"),
+            Workspace::test_new("hidden"),
+        ];
+        app.state.active = Some(0);
+        app.state.ensure_test_terminals();
+        let visible_pane = app.state.workspaces[0].tabs[0].root_pane;
+        let hidden_pane = app.state.workspaces[1].tabs[0].root_pane;
+
+        assert!(
+            app.handle_internal_event_with_render_impact(AppEvent::ForegroundCommandChanged {
+                pane_id: visible_pane,
+                command: Some("nvim".into()),
+            },)
+        );
+        assert!(!app.handle_internal_event_with_render_impact(
+            AppEvent::ForegroundCommandChanged {
+                pane_id: visible_pane,
+                command: Some("nvim".into()),
+            },
+        ));
+        assert!(!app.handle_internal_event_with_render_impact(
+            AppEvent::ForegroundCommandChanged {
+                pane_id: hidden_pane,
+                command: Some("cargo".into()),
+            },
+        ));
+    }
+
+    #[test]
+    fn foreground_command_updates_command_named_outer_title_without_tab_bar() {
+        let mut app = test_app();
+        app.state.automatic_tab_name_source = crate::config::AutomaticTabNameSource::Command;
+        app.state.workspaces = vec![Workspace::test_new("one")];
+        app.state.active = Some(0);
+        app.state.ensure_test_terminals();
+        app.configure_window_title("{tab}");
+        let pane_id = app.state.workspaces[0].tabs[0].root_pane;
+
+        assert!(
+            app.handle_internal_event_with_render_impact(AppEvent::ForegroundCommandChanged {
+                pane_id,
+                command: Some("nvim".into()),
+            },)
+        );
+        assert_eq!(app.window_title().as_deref(), Some("nvim"));
     }
 
     #[test]

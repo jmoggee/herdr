@@ -142,6 +142,14 @@ pub enum TabNumberDisplay {
     Never,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AutomaticTabNameSource {
+    Command,
+    #[default]
+    TerminalTitle,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum HostCursorModeConfig {
@@ -952,6 +960,8 @@ pub struct UiConfig {
     pub confirm_close: bool,
     /// Ask for a tab name before creating a new tab. Default: false.
     pub prompt_new_tab_name: bool,
+    /// Source for automatic tab names. Default: terminal_title.
+    pub automatic_tab_name_source: AutomaticTabNameSource,
     /// Ask for a workspace name before interactive creation. Default: false.
     pub prompt_new_workspace_name: bool,
     /// Draw borders around split panes. auto draws them only for split panes,
@@ -1199,6 +1209,7 @@ impl Default for UiConfig {
             mouse_scroll_lines: None,
             confirm_close: true,
             prompt_new_tab_name: false,
+            automatic_tab_name_source: AutomaticTabNameSource::default(),
             prompt_new_workspace_name: false,
             pane_borders: PaneBordersConfig::Auto,
             pane_outer_borders: true,
@@ -1597,6 +1608,26 @@ prompt_new_tab_name = true
 "#;
         let config: Config = toml::from_str(toml).unwrap();
         assert!(config.ui.prompt_new_tab_name);
+    }
+
+    #[test]
+    fn automatic_tab_name_source_defaults_to_title_and_parses_command() {
+        assert_eq!(
+            Config::default().ui.automatic_tab_name_source,
+            AutomaticTabNameSource::TerminalTitle
+        );
+
+        let config: Config = toml::from_str(
+            r#"
+[ui]
+automatic_tab_name_source = "command"
+"#,
+        )
+        .unwrap();
+        assert_eq!(
+            config.ui.automatic_tab_name_source,
+            AutomaticTabNameSource::Command
+        );
     }
 
     #[test]

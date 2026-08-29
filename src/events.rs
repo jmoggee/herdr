@@ -91,6 +91,11 @@ pub enum AppEvent {
     },
     /// The current Codex input screen is visible during managed startup.
     CodexPromptObserved { pane_id: PaneId, ready: bool },
+    /// The pane's foreground process-group command changed.
+    ForegroundCommandChanged {
+        pane_id: PaneId,
+        command: Option<String>,
+    },
     /// Fallback detector state changed in a pane.
     StateChanged {
         pane_id: PaneId,

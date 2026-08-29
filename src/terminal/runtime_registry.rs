@@ -10,6 +10,7 @@ use super::{TerminalId, TerminalRuntime};
 #[derive(Default)]
 pub(crate) struct TerminalRuntimeRegistry {
     runtimes: HashMap<TerminalId, TerminalRuntime>,
+    track_foreground_commands: bool,
 }
 
 impl TerminalRuntimeRegistry {
@@ -26,7 +27,15 @@ impl TerminalRuntimeRegistry {
         terminal_id: TerminalId,
         runtime: TerminalRuntime,
     ) -> Option<TerminalRuntime> {
+        runtime.set_track_foreground_command(self.track_foreground_commands);
         self.runtimes.insert(terminal_id, runtime)
+    }
+
+    pub(crate) fn set_track_foreground_commands(&mut self, enabled: bool) {
+        self.track_foreground_commands = enabled;
+        for runtime in self.runtimes.values() {
+            runtime.set_track_foreground_command(enabled);
+        }
     }
 
     pub(crate) fn remove(&mut self, terminal_id: &TerminalId) -> Option<TerminalRuntime> {
@@ -82,6 +91,9 @@ impl TerminalRuntimeRegistry {
 
 impl From<HashMap<TerminalId, TerminalRuntime>> for TerminalRuntimeRegistry {
     fn from(runtimes: HashMap<TerminalId, TerminalRuntime>) -> Self {
-        Self { runtimes }
+        Self {
+            runtimes,
+            track_foreground_commands: false,
+        }
     }
 }

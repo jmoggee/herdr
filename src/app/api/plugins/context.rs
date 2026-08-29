@@ -245,7 +245,11 @@ impl App {
             ws_idx,
             workspace,
             self.public_tab_id(ws_idx, tab_idx),
-            ws.tab_display_name(tab_idx, &self.state.terminals),
+            ws.tab_display_name(
+                tab_idx,
+                &self.state.terminals,
+                self.state.automatic_tab_name_source,
+            ),
             focused_pane,
             correlation_id,
         ))
@@ -306,7 +310,11 @@ impl App {
         let workspace = self.workspace_info(ws_idx);
         let tab_idx = ws.active_tab_index();
         let tab_id = self.public_tab_id(ws_idx, tab_idx);
-        let tab_label = ws.tab_display_name(tab_idx, &self.state.terminals);
+        let tab_label = ws.tab_display_name(
+            tab_idx,
+            &self.state.terminals,
+            self.state.automatic_tab_name_source,
+        );
         let focused_pane = ws
             .focused_pane_id()
             .and_then(|pane_id| self.pane_info(ws_idx, pane_id));
@@ -332,7 +340,11 @@ impl App {
             .find_tab_index_for_pane(pane_id)
             .unwrap_or_else(|| ws.active_tab_index());
         let tab_id = self.public_tab_id(ws_idx, tab_idx);
-        let tab_label = ws.tab_display_name(tab_idx, &self.state.terminals);
+        let tab_label = ws.tab_display_name(
+            tab_idx,
+            &self.state.terminals,
+            self.state.automatic_tab_name_source,
+        );
         let focused_pane = self.pane_info(ws_idx, pane_id);
         self.plugin_context_from_parts(
             ws_idx,
