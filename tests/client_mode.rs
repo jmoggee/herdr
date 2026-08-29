@@ -1479,7 +1479,10 @@ fn configured_window_title_tracks_all_tokens_and_focused_osc_only() {
         &second_pane_id,
         r"printf '\033]0;foreground marker\007'",
     );
-    wait_for_window_title(&output, "|W=space-a|T=2|P=|O=foreground marker");
+    wait_for_window_title(
+        &output,
+        "|W=space-a|T=foreground marker|P=|O=foreground marker",
+    );
     assert!(
         captured_window_titles(&output)[titles_before_hidden_update..]
             .iter()

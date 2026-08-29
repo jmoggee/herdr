@@ -155,9 +155,13 @@ pub fn notification_context(
     let mut context = format!("{} · {}", workspace_label, ws_idx + 1);
     if ws.tabs.len() > 1 {
         if let Some(tab_idx) = ws.find_tab_index_for_pane(pane_id) {
-            if let Some(label) = ws.tab_display_name(tab_idx) {
-                context.push_str(&format!(" · {label}"));
-            }
+            let label = ws
+                .tabs
+                .get(tab_idx)
+                .and_then(|tab| tab.custom_name.as_deref())
+                .map(str::to_owned)
+                .unwrap_or_else(|| (tab_idx + 1).to_string());
+            context.push_str(&format!(" · {label}"));
         }
     }
     context

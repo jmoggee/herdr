@@ -765,7 +765,7 @@ fn restore_tab(
     (
         Some((
             crate::workspace::Tab {
-                custom_name: snap.custom_name.clone(),
+                custom_name: snap.custom_name.clone().filter(|name| !name.is_empty()),
                 number,
                 root_pane,
                 layout,
