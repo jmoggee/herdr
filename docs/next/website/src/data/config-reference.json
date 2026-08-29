@@ -1003,8 +1003,8 @@
         {
           "key": "ui.prompt_new_tab_name",
           "type": "boolean",
-          "default": "true",
-          "description": "Ask for a tab name before creating a new tab."
+          "default": "false",
+          "description": "Ask for a tab name before creating a new tab. Otherwise the tab dynamically follows its focused pane's terminal title until explicitly renamed; clearing the rename restores dynamic naming."
         },
         {
           "key": "ui.prompt_new_workspace_name",
