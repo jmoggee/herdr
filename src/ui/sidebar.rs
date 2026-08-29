@@ -85,7 +85,7 @@ pub(crate) fn agent_panel_entries_from(
         .enumerate()
         .flat_map(|(ws_idx, workspace)| {
             workspace
-                .pane_details(&app.terminals)
+                .pane_details(&app.terminals, app.automatic_tab_name_source)
                 .into_iter()
                 .map(move |detail| AgentPanelEntry {
                     ws_idx,

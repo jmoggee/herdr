@@ -334,6 +334,23 @@ async fn publish_codex_prompt_observation(
     }
 }
 
+async fn publish_foreground_command_changed_event(
+    state_events: mpsc::Sender<AppEvent>,
+    pane_id: PaneId,
+    command: Option<String>,
+) {
+    if let Err(e) = state_events
+        .send(AppEvent::ForegroundCommandChanged { pane_id, command })
+        .await
+    {
+        warn!(
+            pane = pane_id.raw(),
+            err = %e,
+            "failed to deliver foreground command change"
+        );
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 struct AgentDetectionPublishUpdate {
     state: AgentState,
@@ -751,6 +768,10 @@ fn should_probe_foreground_job(input: ProcessProbeInput) -> bool {
     foreground_group_changed || input.elapsed_since_process_check >= PROCESS_RECHECK_IDENTIFIED
 }
 
+fn foreground_command_probe_due(enabled: bool, elapsed: std::time::Duration) -> bool {
+    enabled && elapsed >= PROCESS_RECHECK_IDENTIFIED
+}
+
 fn sync_content_change_acquisition(
     current_agent: Option<Agent>,
     suppressed_agent: Option<Agent>,
@@ -801,6 +822,7 @@ struct ProcessProbeResult {
     /// The process that identified as `agent`, which need not lead its job.
     agent_pid: Option<u32>,
     process_name: Option<String>,
+    foreground_command: Option<String>,
 }
 
 fn agent_hint_for_foreground_job_members(
@@ -847,6 +869,7 @@ fn process_probe_result(
         agent: Some(agent),
         agent_pid: Some(agent_pid),
         process_name: Some(process_name),
+        foreground_command: crate::platform::foreground_command_name(pid, job),
     }
 }
 
@@ -902,6 +925,7 @@ fn probe_foreground_process_from_jobs(
             agent: None,
             agent_pid: None,
             process_name: None,
+            foreground_command: crate::platform::foreground_command_name(pid, job),
         };
     }
 
@@ -911,6 +935,7 @@ fn probe_foreground_process_from_jobs(
         agent: None,
         agent_pid: None,
         process_name: None,
+        foreground_command: None,
     }
 }
 
@@ -935,6 +960,7 @@ fn spawn_basic_detection_task(
     detection_content_seq: Arc<AtomicU64>,
     full_lifecycle_authority_active: Arc<AtomicBool>,
     self_reported_agent_active: Arc<AtomicBool>,
+    track_foreground_command: Arc<AtomicBool>,
     state_events: mpsc::Sender<AppEvent>,
 ) -> (
     tokio::task::AbortHandle,
@@ -955,6 +981,7 @@ fn spawn_basic_detection_task(
         let mut last_visible_signal_refresh = None;
         let mut last_process_check = std::time::Instant::now();
         let mut last_foreground_pgid = None;
+        let mut last_foreground_command = None;
         let mut has_process_probe = false;
         let mut acquisition_started_at = None;
         let mut last_content_change_at = None;
@@ -1031,7 +1058,15 @@ fn spawn_basic_detection_task(
                 .flatten();
             let process_group_changed =
                 foreground_group_changed(foreground_pgid, last_foreground_pgid);
+            let command_tracking = track_foreground_command.load(Ordering::Acquire);
+            if !command_tracking {
+                last_foreground_command = None;
+            }
             let should_check_process = pid > 0 && {
+                let command_probe_due = foreground_command_probe_due(
+                    command_tracking,
+                    now.duration_since(last_process_check),
+                );
                 let process_probe_input = ProcessProbeInput {
                     current_agent: agent,
                     suppressed_agent,
@@ -1044,11 +1079,12 @@ fn spawn_basic_detection_task(
                     pending_restore_probe: false,
                     elapsed_since_process_check: now.duration_since(last_process_check),
                 };
-                should_check_foreground_process(
-                    lifecycle_authority_active,
-                    agent_job.in_background(),
-                    process_probe_input,
-                )
+                command_probe_due
+                    || should_check_foreground_process(
+                        lifecycle_authority_active,
+                        agent_job.in_background(),
+                        process_probe_input,
+                    )
             };
 
             if should_check_process {
@@ -1056,6 +1092,15 @@ fn spawn_basic_detection_task(
                 let had_process_probe = has_process_probe;
                 has_process_probe = true;
                 let probe = probe_foreground_process(pid, foreground_pgid);
+                if command_tracking && probe.foreground_command != last_foreground_command {
+                    last_foreground_command = probe.foreground_command.clone();
+                    publish_foreground_command_changed_event(
+                        state_events.clone(),
+                        pane_id,
+                        last_foreground_command.clone(),
+                    )
+                    .await;
+                }
                 let process_group_id = probe.process_group_id;
                 let tracked_process_group_id =
                     process_group_for_change_tracking(foreground_pgid, process_group_id);
@@ -1514,6 +1559,7 @@ pub struct PaneRuntime {
     detection_content_seq: Arc<AtomicU64>,
     full_lifecycle_authority_active: Arc<AtomicBool>,
     self_reported_agent_active: Arc<AtomicBool>,
+    track_foreground_command: Arc<AtomicBool>,
     detect_reset_notify: Arc<Notify>,
     pending_release: Arc<Mutex<Option<PendingAgentRelease>>>,
     preserve_processes_on_drop: bool,
@@ -2648,6 +2694,7 @@ impl PaneRuntime {
 
         let full_lifecycle_authority_active = Arc::new(AtomicBool::new(false));
         let self_reported_agent_active = Arc::new(AtomicBool::new(false));
+        let track_foreground_command = Arc::new(AtomicBool::new(false));
         let (detect_handle, detect_reset_notify, pending_release) = spawn_basic_detection_task(
             pane_id,
             child_pid.clone(),
@@ -2656,6 +2703,7 @@ impl PaneRuntime {
             detection_content_seq.clone(),
             full_lifecycle_authority_active.clone(),
             self_reported_agent_active.clone(),
+            track_foreground_command.clone(),
             events,
         );
 
@@ -2675,6 +2723,7 @@ impl PaneRuntime {
             detection_content_seq,
             full_lifecycle_authority_active,
             self_reported_agent_active,
+            track_foreground_command,
             detect_reset_notify,
             pending_release,
             preserve_processes_on_drop: true,
@@ -2735,6 +2784,7 @@ impl PaneRuntime {
         let detection_content_seq = Arc::new(AtomicU64::new(0));
         let full_lifecycle_authority_active = Arc::new(AtomicBool::new(false));
         let self_reported_agent_active = Arc::new(AtomicBool::new(false));
+        let track_foreground_command = Arc::new(AtomicBool::new(false));
         {
             let child_pid = child_pid.clone();
             let child_wait_completed = child_wait_completed.clone();
@@ -2860,6 +2910,7 @@ impl PaneRuntime {
             let detection_content_seq = detection_content_seq.clone();
             let full_lifecycle_authority_active_for_task = full_lifecycle_authority_active.clone();
             let self_reported_agent_active_for_task = self_reported_agent_active.clone();
+            let track_foreground_command_for_task = track_foreground_command.clone();
             let render_notify = render_notify.clone();
             let render_dirty = render_dirty.clone();
             let detect_reset_notify = Arc::new(Notify::new());
@@ -2876,6 +2927,7 @@ impl PaneRuntime {
                 #[cfg(windows)]
                 let mut last_observation = (Instant::now(), Some(0));
                 let mut last_foreground_pgid = None;
+                let mut last_foreground_command = None;
                 let mut has_process_probe = false;
                 let mut acquisition_started_at = None;
                 let mut last_content_change_at = None;
@@ -3000,16 +3052,26 @@ impl PaneRuntime {
                     }
                     let process_group_changed =
                         foreground_group_changed(foreground_pgid, last_foreground_pgid);
+                    let command_tracking =
+                        track_foreground_command_for_task.load(Ordering::Acquire);
+                    if !command_tracking {
+                        last_foreground_command = None;
+                    }
                     let should_check_process = pid > 0 && {
+                        let command_probe_due = foreground_command_probe_due(
+                            command_tracking,
+                            now.duration_since(last_process_check),
+                        );
                         let process_probe_input = ProcessProbeInput {
                             foreground_pgid,
                             ..process_probe_input
                         };
-                        should_check_foreground_process(
-                            lifecycle_authority_active,
-                            agent_job.in_background(),
-                            process_probe_input,
-                        )
+                        command_probe_due
+                            || should_check_foreground_process(
+                                lifecycle_authority_active,
+                                agent_job.in_background(),
+                                process_probe_input,
+                            )
                     };
 
                     let mut agent_changed = false;
@@ -3020,6 +3082,17 @@ impl PaneRuntime {
                         if pid > 0 {
                             let probe = probe_foreground_process(pid, foreground_pgid);
                             let process_name = probe.process_name;
+                            if command_tracking
+                                && probe.foreground_command != last_foreground_command
+                            {
+                                last_foreground_command = probe.foreground_command.clone();
+                                publish_foreground_command_changed_event(
+                                    state_events.clone(),
+                                    pane_id,
+                                    last_foreground_command.clone(),
+                                )
+                                .await;
+                            }
                             let process_group_id = probe.process_group_id;
                             let tracked_process_group_id = process_group_for_change_tracking(
                                 foreground_pgid,
@@ -3288,6 +3361,7 @@ impl PaneRuntime {
             detection_content_seq,
             full_lifecycle_authority_active,
             self_reported_agent_active,
+            track_foreground_command,
             detect_reset_notify,
             pending_release,
             preserve_processes_on_drop: false,
@@ -3327,6 +3401,11 @@ impl PaneRuntime {
         if active && !previous {
             self.detect_reset_notify.notify_one();
         }
+    }
+
+    pub fn set_track_foreground_command(&self, enabled: bool) {
+        self.track_foreground_command
+            .store(enabled, Ordering::Release);
     }
 
     pub(crate) fn current_size(&self) -> (u16, u16) {
@@ -4059,6 +4138,7 @@ impl PaneRuntime {
                 detection_content_seq: Arc::new(AtomicU64::new(0)),
                 full_lifecycle_authority_active: Arc::new(AtomicBool::new(false)),
                 self_reported_agent_active: Arc::new(AtomicBool::new(false)),
+                track_foreground_command: Arc::new(AtomicBool::new(false)),
                 detect_reset_notify: Arc::new(Notify::new()),
                 pending_release: Arc::new(Mutex::new(None)),
                 preserve_processes_on_drop: true,
@@ -5411,6 +5491,7 @@ mod tests {
             content_write_lock: Arc::new(Mutex::new(())),
             detection_content_seq: Arc::new(AtomicU64::new(0)),
             full_lifecycle_authority_active: Arc::new(AtomicBool::new(false)),
+            track_foreground_command: Arc::new(AtomicBool::new(false)),
             detect_reset_notify: Arc::new(Notify::new()),
             pending_release: Arc::new(Mutex::new(None)),
             preserve_processes_on_drop: true,
@@ -5451,6 +5532,7 @@ mod tests {
             content_write_lock: Arc::new(Mutex::new(())),
             detection_content_seq: Arc::new(AtomicU64::new(0)),
             full_lifecycle_authority_active: Arc::new(AtomicBool::new(false)),
+            track_foreground_command: Arc::new(AtomicBool::new(false)),
             detect_reset_notify: Arc::new(Notify::new()),
             pending_release: Arc::new(Mutex::new(None)),
             preserve_processes_on_drop: true,
@@ -5896,6 +5978,19 @@ mod tests {
     }
 
     #[test]
+    fn unknown_foreground_job_uses_group_leader_command() {
+        let job = crate::platform::ForegroundJob {
+            process_group_id: 42,
+            processes: vec![foreground_process(42, "nvim")],
+        };
+
+        let result = probe_foreground_process_from_jobs(1, Some(42), None, || Some(job), |_| None);
+
+        assert_eq!(result.agent, None);
+        assert_eq!(result.foreground_command.as_deref(), Some("nvim"));
+    }
+
+    #[test]
     fn foreground_agent_hint_accepts_non_leader_foreground_process_environment() {
         let job = crate::platform::ForegroundJob {
             process_group_id: 99,
@@ -5930,6 +6025,7 @@ mod tests {
 
         assert_eq!(result.agent, Some(Agent::Claude));
         assert_eq!(result.process_name.as_deref(), Some("claude"));
+        assert_eq!(result.foreground_command.as_deref(), Some("codex"));
     }
 
     #[test]
@@ -5949,6 +6045,7 @@ mod tests {
 
         assert_eq!(result.agent, Some(Agent::Claude));
         assert_eq!(result.process_name.as_deref(), Some("claude"));
+        assert_eq!(result.foreground_command.as_deref(), Some("vim"));
     }
 
     #[test]
@@ -6025,6 +6122,22 @@ mod tests {
             pending_restore_probe: false,
             elapsed_since_process_check: std::time::Duration::from_secs(1),
         }
+    }
+
+    #[test]
+    fn command_tracking_rechecks_stable_process_groups_periodically() {
+        assert!(!foreground_command_probe_due(
+            false,
+            PROCESS_RECHECK_IDENTIFIED
+        ));
+        assert!(!foreground_command_probe_due(
+            true,
+            PROCESS_RECHECK_IDENTIFIED - std::time::Duration::from_millis(1)
+        ));
+        assert!(foreground_command_probe_due(
+            true,
+            PROCESS_RECHECK_IDENTIFIED
+        ));
     }
 
     #[test]

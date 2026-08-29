@@ -443,6 +443,7 @@ impl Workspace {
         &self,
         tab_idx: usize,
         terminals: &HashMap<TerminalId, TerminalState>,
+        source: crate::config::AutomaticTabNameSource,
     ) -> Option<String> {
         let tab = self.tabs.get(tab_idx)?;
         Some(
@@ -451,7 +452,14 @@ impl Workspace {
                 .or_else(|| {
                     tab.terminal_id(tab.layout.focused())
                         .and_then(|terminal_id| terminals.get(terminal_id))
-                        .and_then(TerminalState::terminal_title_stripped)
+                        .and_then(|terminal| match source {
+                            crate::config::AutomaticTabNameSource::Command => {
+                                terminal.foreground_command_name()
+                            }
+                            crate::config::AutomaticTabNameSource::TerminalTitle => {
+                                terminal.terminal_title_stripped()
+                            }
+                        })
                 })
                 .unwrap_or_else(|| (tab_idx + 1).to_string()),
         )
@@ -1437,6 +1445,9 @@ impl Workspace {
 mod tests {
     use super::*;
 
+    const TITLE: crate::config::AutomaticTabNameSource =
+        crate::config::AutomaticTabNameSource::TerminalTitle;
+
     #[test]
     fn generated_workspace_ids_are_short_base32_handles() {
         let first = generate_workspace_id();
@@ -1665,7 +1676,10 @@ mod tests {
         assert!(ws.move_tab(0, ws.tabs.len()));
 
         let labels: Vec<_> = (0..ws.tabs.len())
-            .map(|tab_idx| ws.tab_display_name(tab_idx, &HashMap::new()).unwrap())
+            .map(|tab_idx| {
+                ws.tab_display_name(tab_idx, &HashMap::new(), TITLE)
+                    .unwrap()
+            })
             .collect();
         assert_eq!(labels, vec!["foo", "2", "3"]);
         assert_eq!(ws.tabs[0].custom_name.as_deref(), Some("foo"));
@@ -1685,38 +1699,66 @@ mod tests {
         let root = ws.tabs[0].root_pane;
         let second = ws.test_split(Direction::Horizontal);
         let mut terminals = HashMap::new();
-        for (pane_id, title) in [(root, "shell"), (second, "editor")] {
+        for (pane_id, title, command) in [
+            (root, "shell title", "bash"),
+            (second, "editor title", "nvim"),
+        ] {
             let terminal_id = ws.terminal_id(pane_id).unwrap().clone();
             let mut terminal = TerminalState::new(terminal_id.clone(), "/tmp".into());
             terminal.set_terminal_title(Some(title.into()));
+            terminal.set_foreground_command(Some(command.into()));
             terminals.insert(terminal_id, terminal);
         }
 
         ws.layout.focus_pane(root);
-        assert_eq!(ws.tab_display_name(0, &terminals).as_deref(), Some("shell"));
+        assert_eq!(
+            ws.tab_display_name(0, &terminals, TITLE).as_deref(),
+            Some("shell title")
+        );
+        assert_eq!(
+            ws.tab_display_name(
+                0,
+                &terminals,
+                crate::config::AutomaticTabNameSource::Command,
+            )
+            .as_deref(),
+            Some("bash")
+        );
         let root_terminal_id = ws.terminal_id(root).unwrap();
         terminals
             .get_mut(root_terminal_id)
             .unwrap()
             .set_terminal_title(Some("project".into()));
         assert_eq!(
-            ws.tab_display_name(0, &terminals).as_deref(),
+            ws.tab_display_name(0, &terminals, TITLE).as_deref(),
             Some("project")
         );
 
         ws.layout.focus_pane(second);
         assert_eq!(
-            ws.tab_display_name(0, &terminals).as_deref(),
-            Some("editor")
+            ws.tab_display_name(0, &terminals, TITLE).as_deref(),
+            Some("editor title")
+        );
+        assert_eq!(
+            ws.tab_display_name(
+                0,
+                &terminals,
+                crate::config::AutomaticTabNameSource::Command,
+            )
+            .as_deref(),
+            Some("nvim")
         );
 
         ws.tabs[0].set_custom_name("fixed".into());
         ws.layout.focus_pane(root);
-        assert_eq!(ws.tab_display_name(0, &terminals).as_deref(), Some("fixed"));
+        assert_eq!(
+            ws.tab_display_name(0, &terminals, TITLE).as_deref(),
+            Some("fixed")
+        );
 
         ws.tabs[0].set_custom_name(String::new());
         assert_eq!(
-            ws.tab_display_name(0, &terminals).as_deref(),
+            ws.tab_display_name(0, &terminals, TITLE).as_deref(),
             Some("project")
         );
     }

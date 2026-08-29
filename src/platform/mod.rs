@@ -97,6 +97,14 @@ pub(crate) fn local_stream_peer_description(_stream: &crate::ipc::LocalStream) -
     None
 }
 
+pub(crate) fn foreground_job_command(job: &ForegroundJob) -> Option<String> {
+    job.processes
+        .iter()
+        .find(|process| process.pid == job.process_group_id)
+        .or_else(|| job.processes.first())
+        .map(|process| process.name.clone())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Signal {
     Hangup,
