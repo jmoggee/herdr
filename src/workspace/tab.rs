@@ -202,7 +202,7 @@ impl Tab {
     }
 
     pub fn set_custom_name(&mut self, name: String) {
-        self.custom_name = Some(name);
+        self.custom_name = (!name.is_empty()).then_some(name);
     }
 
     pub fn split_focused_command(
@@ -443,7 +443,7 @@ impl Tab {
         let pane_id = moved.pane_id;
         panes.insert(pane_id, moved.pane_state);
         Self {
-            custom_name,
+            custom_name: custom_name.filter(|name| !name.is_empty()),
             number,
             root_pane: pane_id,
             layout: TileLayout::from_saved(Node::Pane(pane_id), pane_id),

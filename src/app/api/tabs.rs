@@ -157,13 +157,16 @@ impl App {
         };
         tab.set_custom_name(params.label.clone());
         crate::logging::tab_renamed(&workspace_id, &tab_id);
+        let label = self.state.workspaces[ws_idx]
+            .tab_display_name(tab_idx, &self.state.terminals)
+            .unwrap_or_else(|| params.label.clone());
         self.schedule_session_save();
         self.emit_event(EventEnvelope {
             event: EventKind::TabRenamed,
             data: EventData::TabRenamed {
                 tab_id: self.public_tab_id(ws_idx, tab_idx).unwrap(),
                 workspace_id: self.public_workspace_id(ws_idx),
-                label: params.label,
+                label,
             },
         });
         let tab = self.tab_info(ws_idx, tab_idx).unwrap();
