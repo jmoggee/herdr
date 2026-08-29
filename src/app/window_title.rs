@@ -35,12 +35,15 @@ impl App {
         self.window_title_template.is_some()
     }
 
-    /// Whether the title depends on the focused pane's own terminal title, which
-    /// is the one input that arrives through PTY parsing rather than app state.
+    /// Whether the title depends on a pane terminal title, directly or through
+    /// an automatically named tab.
     pub(crate) fn window_title_uses_terminal_title(&self) -> bool {
         self.window_title_template
             .as_ref()
-            .is_some_and(|(template, _)| template.uses(WindowTitleToken::TerminalTitle))
+            .is_some_and(|(template, _)| {
+                template.uses(WindowTitleToken::TerminalTitle)
+                    || template.uses(WindowTitleToken::Tab)
+            })
     }
 
     /// Renders the configured outer window title, or `None` when window titles
@@ -95,7 +98,7 @@ impl App {
                         self.state
                             .workspaces
                             .get(workspace_index)?
-                            .tab_display_name(tab_index)
+                            .tab_display_name(tab_index, &self.state.terminals)
                     }) {
                         title.push_str(&name);
                     }
@@ -149,6 +152,19 @@ mod tests {
         app.configure_window_title("{workspace}/{tab}");
 
         assert_eq!(app.window_title().as_deref(), Some("herd/1"));
+        assert!(app.window_title_uses_terminal_title());
+
+        let pane_id = app.state.workspaces[0].tabs[0].root_pane;
+        let terminal_id = app.state.workspaces[0]
+            .terminal_id(pane_id)
+            .unwrap()
+            .clone();
+        app.state
+            .terminals
+            .get_mut(&terminal_id)
+            .unwrap()
+            .set_terminal_title(Some("editor".into()));
+        assert_eq!(app.window_title().as_deref(), Some("herd/editor"));
 
         app.state.workspaces[0].tabs[0].custom_name = Some("build".into());
         assert_eq!(app.window_title().as_deref(), Some("herd/build"));
