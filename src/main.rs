@@ -295,8 +295,11 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 # confirm_close = true
 
 # Ask for a tab name before creating a new tab.
-# Automatic tabs follow their focused pane's terminal title.
 # prompt_new_tab_name = false
+
+# Automatic tab labels can follow the focused pane's terminal title or its
+# concise foreground command (tmux-style). Values: "terminal_title", "command".
+# automatic_tab_name_source = "terminal_title"
 
 # Ask for a workspace name before interactive creation.
 # prompt_new_workspace_name = false

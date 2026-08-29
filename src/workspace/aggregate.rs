@@ -74,11 +74,18 @@ impl Workspace {
             .unwrap_or((AgentState::Unknown, true))
     }
 
-    pub fn pane_details(&self, terminals: &HashMap<TerminalId, TerminalState>) -> Vec<PaneDetail> {
+    pub fn pane_details(
+        &self,
+        terminals: &HashMap<TerminalId, TerminalState>,
+        source: crate::config::AutomaticTabNameSource,
+    ) -> Vec<PaneDetail> {
         self.tabs
             .iter()
             .enumerate()
-            .flat_map(|(tab_idx, tab)| tab.pane_details(terminals, tab_idx))
+            .flat_map(|(tab_idx, tab)| {
+                let _ = self.tab_display_name(tab_idx, terminals, source);
+                tab.pane_details(terminals, tab_idx)
+            })
             .collect()
     }
 }
@@ -169,7 +176,10 @@ mod tests {
         terminal.detected_agent = Some(Agent::Codex);
         terminals.insert(terminal.id.clone(), terminal);
 
-        let details = ws.pane_details(&terminals);
+        let details = ws.pane_details(
+            &terminals,
+            crate::config::AutomaticTabNameSource::TerminalTitle,
+        );
         let survivor = details
             .iter()
             .find(|detail| detail.pane_id == survivor_pane)

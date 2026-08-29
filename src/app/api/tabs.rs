@@ -158,7 +158,11 @@ impl App {
         tab.set_custom_name(params.label.clone());
         crate::logging::tab_renamed(&workspace_id, &tab_id);
         let label = self.state.workspaces[ws_idx]
-            .tab_display_name(tab_idx, &self.state.terminals)
+            .tab_display_name(
+                tab_idx,
+                &self.state.terminals,
+                self.state.automatic_tab_name_source,
+            )
             .unwrap_or_else(|| params.label.clone());
         self.schedule_session_save();
         self.emit_event(EventEnvelope {
