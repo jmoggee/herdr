@@ -439,11 +439,20 @@ impl Workspace {
         self.tabs.get_mut(self.active_tab)
     }
 
-    pub fn tab_display_name(&self, tab_idx: usize) -> Option<String> {
+    pub fn tab_display_name(
+        &self,
+        tab_idx: usize,
+        terminals: &HashMap<TerminalId, TerminalState>,
+    ) -> Option<String> {
         let tab = self.tabs.get(tab_idx)?;
         Some(
             tab.custom_name
                 .clone()
+                .or_else(|| {
+                    tab.terminal_id(tab.layout.focused())
+                        .and_then(|terminal_id| terminals.get(terminal_id))
+                        .and_then(TerminalState::terminal_title_stripped)
+                })
                 .unwrap_or_else(|| (tab_idx + 1).to_string()),
         )
     }
@@ -1656,7 +1665,7 @@ mod tests {
         assert!(ws.move_tab(0, ws.tabs.len()));
 
         let labels: Vec<_> = (0..ws.tabs.len())
-            .map(|tab_idx| ws.tab_display_name(tab_idx).unwrap())
+            .map(|tab_idx| ws.tab_display_name(tab_idx, &HashMap::new()).unwrap())
             .collect();
         assert_eq!(labels, vec!["foo", "2", "3"]);
         assert_eq!(ws.tabs[0].custom_name.as_deref(), Some("foo"));
@@ -1668,5 +1677,47 @@ mod tests {
         assert_eq!(ws.tabs[2].root_pane, moved_root);
         assert_eq!(ws.tabs[ws.active_tab].root_pane, active_root);
         ws.assert_invariants_for_test();
+    }
+
+    #[test]
+    fn automatic_tab_name_tracks_focused_pane_until_explicitly_named() {
+        let mut ws = Workspace::test_new("test");
+        let root = ws.tabs[0].root_pane;
+        let second = ws.test_split(Direction::Horizontal);
+        let mut terminals = HashMap::new();
+        for (pane_id, title) in [(root, "shell"), (second, "editor")] {
+            let terminal_id = ws.terminal_id(pane_id).unwrap().clone();
+            let mut terminal = TerminalState::new(terminal_id.clone(), "/tmp".into());
+            terminal.set_terminal_title(Some(title.into()));
+            terminals.insert(terminal_id, terminal);
+        }
+
+        ws.layout.focus_pane(root);
+        assert_eq!(ws.tab_display_name(0, &terminals).as_deref(), Some("shell"));
+        let root_terminal_id = ws.terminal_id(root).unwrap();
+        terminals
+            .get_mut(root_terminal_id)
+            .unwrap()
+            .set_terminal_title(Some("project".into()));
+        assert_eq!(
+            ws.tab_display_name(0, &terminals).as_deref(),
+            Some("project")
+        );
+
+        ws.layout.focus_pane(second);
+        assert_eq!(
+            ws.tab_display_name(0, &terminals).as_deref(),
+            Some("editor")
+        );
+
+        ws.tabs[0].set_custom_name("fixed".into());
+        ws.layout.focus_pane(root);
+        assert_eq!(ws.tab_display_name(0, &terminals).as_deref(), Some("fixed"));
+
+        ws.tabs[0].set_custom_name(String::new());
+        assert_eq!(
+            ws.tab_display_name(0, &terminals).as_deref(),
+            Some("project")
+        );
     }
 }

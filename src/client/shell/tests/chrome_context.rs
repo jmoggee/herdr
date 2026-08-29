@@ -429,7 +429,9 @@ fn global_menu_opens_from_sidebar_and_routes_client_actions() {
 
 #[test]
 fn new_tab_overlay_owns_text_cursor_and_submits_public_api_request() {
-    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    let mut config = Config::default();
+    config.ui.prompt_new_tab_name = true;
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&config));
     state.set_snapshot(Box::new(snapshot()));
     state.set_pane_surface(surface());
     let mut open = ClientShellInput::default();
