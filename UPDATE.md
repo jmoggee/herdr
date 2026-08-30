@@ -1,8 +1,9 @@
 # Fork maintenance guide
 
-This fork (`jmoggee/herdr`) carries five commits on top of upstream
-`herdrdev/herdr`. This file tells an agent what they are, why they exist, and
-what to verify after rebasing onto a newer upstream.
+This fork (`jmoggee/herdr`) carries six implementation changes on top of
+`herdrdev/herdr`, plus companion commits that only maintain documentation. This
+file tells an agent what they are, why they exist, and what to verify after
+rebasing onto a newer upstream.
 
 `master` here is the integration branch. Upstream is `origin`; the fork is
 `fork`. Never push to `origin` — the authenticated account is not a maintainer
@@ -28,11 +29,16 @@ takes **over an hour** and dozens of integration tests fail on timeouts. Built
 correctly it takes **0.08 s** and those failures disappear. If tests look
 catastrophically broken or slow, check this before investigating anything else.
 
-## Expected test failures
+## Historical test-failure snapshot
 
-Roughly 15 tests fail in this environment regardless of our changes. They are
-pre-existing and environmental (workspace cwd discovery, git metadata, process
-and pty spawning), not regressions:
+The lists below were measured when rebasing onto `a5c69bea`. They are diagnostic
+context, never an allowlist for an unattended push: upstream and this machine
+have both changed since then. On every rebase, run the same suite in the rebased
+fork and a detached pristine worktree at the exact new `origin/master`, then
+compare sorted failures. Any fork-only failure blocks the push.
+
+At that snapshot, roughly 15 unit tests failed in both trees from environmental
+workspace cwd discovery, git metadata, process, and PTY spawning:
 
 ```
 app::api::layouts::tests::*            (3)
@@ -44,9 +50,9 @@ pty::backend::unix::tests::portable_pty_setup_leaves_one_parent_pty_fd
 workspace::tests::new_workspace_retains_discovered_git_metadata
 ```
 
-About 19 integration tests (`tests/*.rs`, run as `herdr::<binary>`) also fail
-here on a pristine upstream tree, for the same environmental reasons (agent
-hook session identity, process termination, live handoff, cwd following):
+About 19 integration tests (`tests/*.rs`, run as `herdr::<binary>`) also failed
+in both trees, from agent hook session identity, process termination, live
+handoff, and cwd following:
 
 ```
 api_ping::{new_terminal_cwd_follow_ignores_nonleader_group_member_cwd,
@@ -63,14 +69,15 @@ The `client_mode`, `cross_area`, and `multi_client` integration tests are
 of `CellData`, so a `CellData` field that is missing from those mirrors fails
 them with `InvalidIntegerType { expected: U16, found: U32 }`. That is ours.
 
-Confirm the set is unchanged rather than assuming, and do it with a pristine
-worktree rather than a stash — `git worktree add /tmp/herdr-pristine <upstream-sha>
---detach`, run the same command there, and diff the two sorted failure lists.
-That keeps the rebased tree intact and lets both runs happen back to back.
-Anything failing beyond this list is ours.
+Use a pristine worktree rather than a stash:
+`git worktree add /tmp/herdr-pristine <upstream-sha> --detach`. Run the same
+command there and diff the two sorted failure lists. That keeps the rebased tree
+intact and lets both runs happen back to back. Always unregister it afterward
+with `git worktree remove /tmp/herdr-pristine`, including when comparison fails.
 
-As of the rebase onto `a5c69bea` the total is **34**, and the fork's list is
-identical to pristine upstream's. Two details make a run readable:
+The historical total was **34**, identical in the fork and pristine upstream.
+Do not carry that number forward without a new comparison. Two details made that
+run readable:
 
 - Bound the hangs. `cases::plugins::plugin_install_*` can wedge indefinitely
   under load. `--config-file` a profile with
@@ -80,12 +87,12 @@ identical to pristine upstream's. Two details make a run readable:
   `CellData`/`CellWire` work survived. They are the fork's canary; treat any
   failure there as ours until proven otherwise.
 
-`just check` cannot run fully here — the maintenance-script tests need
-`python3` and the integration-asset tests need `bun`, neither of which is in the
-dev shell. Run the cargo half plus `cargo fmt --check` and
-`cargo clippy --all-targets --locked -- -D warnings`.
+At that snapshot, `just check` could not run fully because the dev shell lacked
+`python3` and `bun`. Use the current `just` recipes first; only narrow validation
+when a current failure proves the environment still lacks a required tool, and
+record the exact omission in the sync report.
 
-## The five commits
+## Implementation changes
 
 ### 1. `fix: carry pane underline colors to the host terminal` (refs #1252, #1169)
 
@@ -106,15 +113,19 @@ colored undercurls rendered in the text foreground color.
   the socket. `underline_color` sits between `modifier` and `skip` there too;
   bincode is positional, so the field order must match `CellData` exactly.
 
-`PROTOCOL_VERSION` is **21**, bumped by this fork. It sat at 20 while 20 was
-still unpublished, and the unreleased protocol absorbed the new field. That
-stopped being true once upstream's preview channel published protocol 20 with
-its own narrower `CellData`: one version number would then have described two
-different wire formats, and a stock preview client would have passed the
-handshake and gone on to mis-decode every frame.
+**Current protocol state.** `PROTOCOL_VERSION` is **21**, inherited from
+upstream. Stable and preview currently publish protocol 20, so the fork's wider
+`CellData` may ride upstream's unpublished protocol 21 without another bump.
+The historical `fix: bump the wire protocol for the pane underline color field`
+commit is documentation-only after the latest rebase; do not infer protocol
+ownership or necessity from its subject.
 
-A bump touches four things besides the constant, and missing any one of them
-fails a large and misleading block of tests:
+Recompute this after every rebase. Compare the rebased fork's wire layout and
+version with upstream source and the `protocol` fields in `website/latest.json`
+and `website/preview.json`. If the fork still differs from upstream at protocol
+`V` and either channel has published `V`, bump the fork to `V+1`. A bump touches
+four things besides the constant, and missing any one fails a large and
+misleading block of tests:
 
 - `src/protocol/wire.rs::PROTOCOL_VERSION` — the constant itself.
 - `tests/support/mod.rs::CURRENT_PROTOCOL` — shared by `client_mode`,
@@ -131,10 +142,10 @@ frozen bytes in `wire.rs` alone. That test pins the *input* envelope, which this
 fork does not touch, so the bytes stay correct and rewriting them only invites a
 conflict.
 
-**Re-check after every rebase.** Compare `PROTOCOL_VERSION` against the
-`protocol` field in `website/latest.json` (stable) and `website/preview.json`
-(preview). Both are upstream's published release metadata and must never be
-edited here. If upstream has since published 21, bump again.
+Both release metadata files belong to upstream and must never be edited here.
+If upstream adds equivalent underline-color transport, check the full-frame,
+dirty-patch, ANSI-render, visual-equality, and hand-written `CellWire` paths
+before dropping this fork change.
 
 ### 2. `fix: answer decrqss sgr queries in panes` (refs #1178)
 
@@ -176,6 +187,12 @@ A named tab hid its position, which is also its `prefix+<n>` switch key.
   `CustomThemeColors` on purpose: that struct mirrors the semantic palette every
   widget draws from, and tab chrome colors have no meaning elsewhere.
 
+`auto` adds a chip when the tab has a name, `always` also turns an otherwise
+unnamed tab into a compact chip, and `never` leaves the number in the body label.
+Chips are left-anchored; unchipped labels stay centered. The eight foreground
+and background fields under `[theme.tabs]` independently cover active/inactive
+number chips and names, with unset values following the semantic palette.
+
 Two invariants worth protecting:
 
 - **Width uses `display_width_u16`, never `.chars().count()`.** An earlier
@@ -191,74 +208,197 @@ Two invariants worth protecting:
 paints menus, popups, and panel shells. Three sites paint the row (fill, status
 separator, status segments) and all route through `tab_bar_bg()`.
 
-### 5. `fix: bump the wire protocol for the pane underline color field`
+### 5. `feat(ui): name tabs from focused terminal titles`
 
-Added during the rebase onto upstream `a5c69bea`, when preview began publishing
-protocol 20. It carries `PROTOCOL_VERSION` 20 → 21 and the four fixture and
-artifact updates that a bump drags with it. The reasoning and the full list of
-sites are under commit 1 above, because the bump exists only to protect the
-`CellData` field that commit adds.
+Tabs are automatic until explicitly named. `Workspace::tab_display_name()` is
+the authority and resolves, in order:
 
-It is a separate commit rather than a squash into commit 1 so the history shows
-that the bump became necessary at a specific rebase, not that it was always
-there. If a future rebase ever makes it unnecessary — upstream adding an
-equivalent field, say — this commit is the one to drop.
+1. A non-empty `Tab::custom_name`.
+2. The tab's focused pane's stripped OSC terminal title.
+3. The tab's current one-based position, never stable `Tab::number`.
+
+Every projection must use that resolver: desktop and mobile tabs, Navigator,
+sidebar pane details, notifications, API `TabInfo`, plugin contexts, rename
+prefill, and the outer `{tab}` window-title token. A split tab follows whichever
+pane is focused, including when the tab is not the workspace's active tab.
+
+`ui.prompt_new_tab_name` now defaults to `false`. Saving the rename dialog
+freezes its prefilled automatic label as a custom name. Saving exactly `""`,
+including through the tab API, clears `custom_name` and restores automatic
+naming. `src/workspace/tab.rs` and `src/persist/restore.rs` normalize empty
+persisted names to `None`; only custom names persist.
+
+PTY parsing records dirty title sources and `src/app/terminal_titles.rs` updates
+pure `TerminalState`. Spinner-frame changes that leave the stripped title
+unchanged must not publish stripped-title metadata changes or redraw automatic
+labels. A sidebar row configured with raw `terminal_title` is the deliberate
+exception and follows raw spinner frames; `terminal_title_stripped` stays quiet.
+Changes in hidden workspaces still update state and events without generic
+rendering. In the active workspace, the desktop tab row treats every automatic
+tab as visible whenever the row exists, including tabs scrolled offscreen;
+Navigator, mobile navigation, relevant sidebar tokens, and an outer title using
+`{tab}` have their own visibility paths.
+
+Dynamic labels change geometry. `compute_tab_bar_view()` precomputes each width
+once before its scroll-search loops, and sizing, rendering, and mouse hit areas
+must consume the same resolved label. Do not put terminal-state locking, title
+formatting, or allocation back inside pane-scaled render loops.
+
+### 6. `feat(ui): allow command-based automatic tab names`
+
+`ui.automatic_tab_name_source` selects `terminal_title` (default) or `command`.
+Custom names override either source. Command mode initially falls back to the
+basename of the pane's launch command, then to the tab position, until process
+detection supplies a foreground command.
+
+Foreground-command selection follows the foreground process group. Linux and
+macOS choose its leader, or the first job member when the leader is absent. On
+Windows, existing agent-aware selection remains authoritative; when it still
+selects the pane shell, its sole direct child is used, while zero or multiple
+children deliberately fall back to the shell. Unsupported platforms fall back
+to launch command or position.
+
+Tracking is opt-in. `TerminalRuntimeRegistry::set_track_foreground_commands()`
+must reach existing, restored, and newly inserted runtimes. Stable process
+groups are reprobed every five seconds only in command mode so a same-PGID
+`exec` eventually changes the name. Initial construction, server handoff, and
+config reload all set the flag; switching source clears stale cached commands.
+
+`ForegroundCommandChanged` updates cached `TerminalState`, increments its
+revision, and publishes existing `PaneUpdated` API projection rather than a new
+wire field. It redraws the focused automatic label when the active workspace's
+tab row or another label projection is present, or when the outer title uses
+`{tab}`. Custom-named tabs and tabs in hidden workspaces remain render-quiet.
+Preserve this performance boundary: title mode must not gain periodic
+process-tree probes, and lifecycle-authority shortcuts must not suppress the
+five-second command refresh while command mode is enabled.
+
+## Documentation-only companion commits
+
+- `docs: describe the fork's changes and how to rebase them`, and later commits
+  that only refresh `UPDATE.md`, maintain this guide without runtime behavior.
+- `docs: list the tab row settings in the default config` changes generated
+  default-config comments in `src/main.rs`, not parser or runtime behavior.
+- `fix: bump the wire protocol for the pane underline color field` is currently
+  documentation-only after upstream supplied protocol 21. Its historical subject
+  records why a bump was once needed; recompute the protocol state after every
+  rebase rather than preserving a source change that no longer exists.
 
 ## Updating onto a newer upstream
 
 ```bash
 git fetch origin master
-git rebase origin/master        # on master
+git fetch fork master
+git rev-parse fork/master > "$(git rev-parse --git-path herdr-fork-before)"
+
+if git merge-base --is-ancestor fork/master master; then
+  : # local master already contains every fork commit
+elif git merge-base --is-ancestor master fork/master; then
+  git merge --ff-only fork/master
+else
+  echo "local master and fork/master diverged; stop for human reconciliation" >&2
+  exit 1
+fi
+
+git rebase origin/master
 ```
+
+The file under Git's private directory keeps the observed fork SHA across agent
+shell calls for the landing command. Fetching the fork is not permission to
+overwrite commits found there: fast-forward when the fork is simply ahead, and
+stop when histories diverge.
 
 Conflict hotspots, in rough order of likelihood:
 
 | File | Why it conflicts |
 |---|---|
-| `src/ui/tabs.rs` | Largest change; we restructured label composition |
-| `src/pane/terminal.rs` | Touched by both features, near other trackers |
+| `src/ui/tabs.rs` | Segment composition, dynamic widths, scrolling, and mouse geometry |
+| `src/workspace.rs` | Canonical label precedence and source selection, with broad call-site fanout |
+| `src/app/terminal_titles.rs` | Visibility-aware invalidation for both automatic sources |
+| `src/pane.rs` | Detector hot path and the five-second command refresh |
+| `src/pane/terminal.rs` | Both terminal fixes sit beside other query trackers |
 | `src/protocol/wire.rs` | `CellData` is a hot struct upstream |
 | `src/protocol/render_ansi.rs` | `build_sgr` signature gained a parameter |
+| `src/app/window_title.rs` | `{tab}` indirectly depends on title or command state |
+| `src/app/input/modal.rs` and `src/app/api/tabs.rs` | Rename freezes or clears automatic mode |
+| `src/app/mod.rs` and `src/terminal/runtime_registry.rs` | Startup, handoff, reload, and runtime tracking toggle |
+| `src/platform/windows.rs` | Agent selection and sole-child command selection share one process snapshot |
+| `src/workspace/tab.rs` and `src/persist/restore.rs` | Empty custom-name normalization |
+| `src/ui/mobile.rs`, `src/ui/navigator.rs`, `src/ui/sidebar.rs` | Every label projection must use the configured source |
 | `docs/next/CHANGELOG.md` | Everyone edits the top of this file |
 | `docs/next/website/src/data/config-reference.json` | Adjacent key insertions |
 
 ### After rebasing, check in this order
 
-1. **Build correctly** (see the top of this file), then
+1. **Recompute the inventory.** Run
+   `git log --cherry-pick --right-only --no-merges --oneline origin/master...master`,
+   classify implementation versus documentation-only commits, and update this
+   guide when the count, ownership, or behavior changed during the rebase.
+2. **Build correctly** (see the top of this file), then
    `cargo fmt --check` and `cargo clippy --all-targets --locked -- -D warnings`.
-2. **Frame digest characterization tests will fail if upstream changed rendering.**
+3. **Frame digest characterization tests will fail if upstream changed rendering.**
    `ui::tab_surface::tests::desktop_full_app_semantic_frame_is_characterized` and
    its `mobile_` sibling SHA-256 the bincode-encoded `FrameData`. Any change to
    `CellData` or the tab row moves them. Read the new digest from the failure and
    update it — but first confirm the test's other assertions (geometry, cursor,
    hyperlinks) still pass, because those failing means something real broke.
-3. **Run the suite** and compare failures against the expected list above.
-4. **Check `PROTOCOL_VERSION`** as described in commit 1.
-5. **Live-verify both fixes.** Unit tests do not prove the escape sequences reach
-   a real terminal:
+4. **Run the suite** in both trees and compare their sorted failure lists. Remove
+   the pristine worktree afterward. Any fork-only failure blocks the push; the
+   historical snapshot above cannot authorize it.
+5. **Check `PROTOCOL_VERSION`** as described in implementation change 1.
+6. **Run the automatic-name characterizations.** At minimum:
 
 ```bash
-# start a disposable session with the built binary
-HERDR_SESSION=verify ./target/release/herdr server &
-./target/release/herdr workspace create --cwd /var/tmp --focus
-
-# undercurl color, needs no editor (issue #1252)
-printf '\033[38;2;0;255;0m\033[4:3m\033[58;2;255;0;0mGREEN TEXT, RED CURL\033[59m\033[24m\033[39m\n'
-
-# neovim's DECRQSS probe (issue #1178) — read the pane back and expect 4:3 and 58
-./target/release/herdr pane read <pane> --format ansi
+just test-one automatic_tab_name_tracks_focused_pane_until_explicitly_named
+just test-one saving_rename_makes_the_current_automatic_name_static
+just test-one automatic_tab_name_source_defaults_to_title_and_parses_command
+just test-one foreground_command_updates_command_named_tabs_only_when_visible
+just test-one foreground_command_updates_command_named_outer_title_without_tab_bar
+just test-one command_tracking_rechecks_stable_process_groups_periodically
 ```
 
-   Expect `4:3` for the curly style and `58;2;…` for the color. A plain `4` with
-   no `58` means the DECRQSS responder regressed.
+   On Windows, also run
+   `just test-one windows_command_name_falls_back_to_shell_for_ambiguous_children`;
+   the test is compile-gated out of Unix builds.
+7. **Check projection and docs parity.** Desktop/mobile tabs, Navigator, sidebar
+   tab tokens, API tab info, plugin and notification contexts, rename prefill,
+   and outer `{tab}` must resolve the same label. Defaults and accepted values
+   must agree across `src/config/model.rs`, `src/main.rs`, the configuration
+   guide, and `config-reference.json`.
+8. **Live-verify the terminal fixes.** Use the project-local
+   `herdr-throwaway-repro` skill with the built binary and a unique named session.
+   Clear inherited socket, session, workspace, tab, and pane variables when
+   launching it, and explicitly address that session on every control command.
+   Run the colored-undercurl `printf` inside the disposable pane through
+   `pane run`, not in the maintenance shell. Drive a real Neovim DECRQSS probe in
+   that pane and inspect it with `pane read --format ansi`. Expect `4:3` for the
+   curly style and `58;2;…` for the color; plain `4` with no `58` is a regression.
 
-6. **Clean up** the disposable session: `session stop` then `session delete`.
+9. **Live-verify automatic names.** With the default source, emit OSC 0/2 titles
+   from two split panes and confirm the label follows focus. Rename it and confirm
+   title changes no longer affect it; save an empty rename and confirm automation
+   resumes. Switch to `automatic_tab_name_source = "command"`, reload config,
+   and verify shell → command → shell transitions, allowing five seconds for a
+   stable-process-group replacement. Switch back and confirm stale command state
+   does not leak into title mode.
+10. **Protect the hot paths.** Hidden title/command changes must not cause generic
+    renders, title mode must not periodically inspect process trees, and tab
+    widths must be computed once per view computation. Run `just bench-render-scale`
+    whenever conflict resolution touches these paths, with at least 15 populated
+    panes as required by `AGENTS.md`.
+11. **Clean up** through `herdr-throwaway-repro`: stop and delete the exact named
+    session after checking current CLI help, then close only the outer pane that
+    reproduction created.
 
 ### Landing it
 
 ```bash
-git push --force-with-lease fork master
+git push \
+  --force-with-lease=refs/heads/master:"$(cat "$(git rev-parse --git-path herdr-fork-before)")" \
+  fork master &&
+  rm "$(git rev-parse --git-path herdr-fork-before)"
 ```
 
-`--force-with-lease` rather than `--force`: the fork's master is rewritten on
-every rebase, and the lease catches a fork that moved underneath you.
+The explicit lease pins the remote SHA observed before rebasing. It catches a
+fork that moves during the run; the pre-rebase ancestry check protects work that
+was already on the fork when the run began.
