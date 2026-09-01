@@ -113,12 +113,13 @@ colored undercurls rendered in the text foreground color.
   the socket. `underline_color` sits between `modifier` and `skip` there too;
   bincode is positional, so the field order must match `CellData` exactly.
 
-**Current protocol state.** `PROTOCOL_VERSION` is **21**, inherited from
-upstream. Stable and preview currently publish protocol 20, so the fork's wider
-`CellData` may ride upstream's unpublished protocol 21 without another bump.
-The historical `fix: bump the wire protocol for the pane underline color field`
-commit is documentation-only after the latest rebase; do not infer protocol
-ownership or necessity from its subject.
+**Current protocol state.** `PROTOCOL_VERSION` is **22** in the fork. Upstream
+source is protocol 21, stable publishes protocol 20, and preview publishes
+protocol 21. Because the fork's wider `CellData` differs from the now-published
+preview protocol 21 wire layout, the fork owns the bump to 22. The historical
+`fix: bump the wire protocol for the pane underline color field` commit remains
+documentation-only after the latest rebase; do not infer protocol ownership or
+necessity from its subject.
 
 Recompute this after every rebase. Compare the rebased fork's wire layout and
 version with upstream source and the `protocol` fields in `website/latest.json`
