@@ -1,6 +1,8 @@
 use serde::Deserialize;
 use tracing::warn;
 
+use super::tab_theme::TabThemeConfig;
+
 pub const THEME_NAMES: &[&str] = &[
     "catppuccin",
     "catppuccin-latte",
@@ -71,7 +73,7 @@ pub struct ThemeConfig {
     pub custom: Option<CustomThemeColors>,
     /// Per-element colors for the desktop tab row. Unset elements follow the
     /// selected theme.
-    pub tabs: Option<super::tab_theme::TabThemeConfig>,
+    pub tabs: Option<TabThemeConfig>,
 }
 
 impl ThemeConfig {
