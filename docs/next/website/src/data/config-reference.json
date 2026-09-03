@@ -1006,8 +1006,8 @@
           "default": "terminal_title",
           "description": "Source for automatic tab labels. terminal_title preserves application-provided titles; command uses the concise foreground command, like tmux automatic rename.",
           "values": [
-            "terminal_title",
-            "command"
+            "command",
+            "terminal_title"
           ]
         },
         {
