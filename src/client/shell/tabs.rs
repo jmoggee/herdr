@@ -223,6 +223,7 @@ pub(crate) fn render_tab_bar(
             tab.focused,
             tab.custom_label,
         );
+        buffer.set_style(rect, body);
         let chip = tab_number_style(palette, &config.theme_runtime.tabs, body, tab.focused);
         let has_chip = matches!(
             segments.first().map(|segment| segment.kind),
