@@ -31,37 +31,35 @@ catastrophically broken or slow, check this before investigating anything else.
 
 ## Historical test-failure snapshot
 
-The lists below were measured when rebasing onto `a5c69bea`. They are diagnostic
+The lists below were measured when rebasing onto `6045fe6a`. They are diagnostic
 context, never an allowlist for an unattended push: upstream and this machine
 have both changed since then. On every rebase, run the same suite in the rebased
 fork and a detached pristine worktree at the exact new `origin/master`, then
 compare sorted failures. Any fork-only failure blocks the push.
 
-At that snapshot, roughly 15 unit tests failed in both trees from environmental
-workspace cwd discovery, git metadata, process, and PTY spawning:
+At that snapshot, 15 unit tests failed in both trees from environmental
+workspace cwd discovery, git metadata, clipboard access, process, and PTY
+spawning:
 
 ```
-app::api::layouts::tests::*            (3)
-app::api::tabs / workspaces / worktrees tests
-app::input::mouse::tests::keyboard_context_menu_split_keeps_new_runtime
-app::tests::pane_split_request_*       (4)
+app::api::layouts::tests::*                                  (3)
+app::api::tabs::tests::tab_create_follows_cached_*           (1)
+app::api::workspaces::tests::workspace_create_*              (2)
+app::api::worktrees::tests::*                                (3)
+app::tests::pane_split_request_*                             (3)
 detect::tests::foreground_job_detects_agent_behind_shell_wrapper
+platform::linux::tests::failed_wl_copy_uses_x11_fallback
 pty::backend::unix::tests::portable_pty_setup_leaves_one_parent_pty_fd
-workspace::tests::new_workspace_retains_discovered_git_metadata
 ```
 
-About 19 integration tests (`tests/*.rs`, run as `herdr::<binary>`) also failed
-in both trees, from agent hook session identity, process termination, live
-handoff, and cwd following:
+Six integration tests (`tests/*.rs`, run as `herdr::<binary>`) also failed in
+both trees, from agent startup, live handoff, and cwd following:
 
 ```
 api_ping::{new_terminal_cwd_follow_ignores_nonleader_group_member_cwd,
            pane_info_reports_foreground_cwd_without_changing_pane_cwd}
 cli::cases::agents::agent_start_*                        (3)
-cli::cases::hooks::*                                     (6)
-cli::cases::panes::closing_{pane,workspace}_terminates_processes_inside_it
-cli::cases::workspace::forced_worktree_remove_terminates_processes_inside_checkout
-live_handoff::*                                          (5)
+live_handoff::live_handoff_keeps_unmanaged_agent_name_bound_to_saved_session
 ```
 
 The `client_mode`, `cross_area`, and `multi_client` integration tests are
@@ -75,7 +73,7 @@ command there and diff the two sorted failure lists. That keeps the rebased tree
 intact and lets both runs happen back to back. Always unregister it afterward
 with `git worktree remove /tmp/herdr-pristine`, including when comparison fails.
 
-The historical total was **34**, identical in the fork and pristine upstream.
+The historical total was **21**, identical in the fork and pristine upstream.
 Do not carry that number forward without a new comparison. Two details made that
 run readable:
 
