@@ -173,6 +173,60 @@ fn modal_paste_inserts_clipboard_text_through_overlay_text_path() {
 }
 
 #[test]
+fn saving_rename_makes_the_current_automatic_name_static() {
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.set_snapshot(Box::new(snapshot()));
+    state.overlay = Some(ClientShellOverlay::Rename(ClientRenameOverlay {
+        title: "rename tab",
+        input: "editor".into(),
+        replace_on_type: false,
+        target: ClientRenameTarget::Tab {
+            tab_id: "tab_1".into(),
+        },
+    }));
+    let mut outcome = ClientShellInput::default();
+
+    state.save_rename_overlay(&mut outcome);
+
+    assert!(matches!(
+        outcome.actions.as_slice(),
+        [ClientShellAction::Endpoint { request, .. }]
+            if matches!(
+                &request.method,
+                crate::api::schema::Method::TabRename(params)
+                    if params.tab_id == "tab_1" && params.label == "editor"
+            )
+    ));
+}
+
+#[test]
+fn saving_empty_tab_rename_restores_automatic_name() {
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.set_snapshot(Box::new(snapshot()));
+    state.overlay = Some(ClientShellOverlay::Rename(ClientRenameOverlay {
+        title: "rename tab",
+        input: String::new(),
+        replace_on_type: false,
+        target: ClientRenameTarget::Tab {
+            tab_id: "tab_1".into(),
+        },
+    }));
+    let mut outcome = ClientShellInput::default();
+
+    state.save_rename_overlay(&mut outcome);
+
+    assert!(matches!(
+        outcome.actions.as_slice(),
+        [ClientShellAction::Endpoint { request, .. }]
+            if matches!(
+                &request.method,
+                crate::api::schema::Method::TabRename(params)
+                    if params.tab_id == "tab_1" && params.label.is_empty()
+            )
+    ));
+}
+
+#[test]
 fn client_shell_graphics_follow_final_shell_origin_and_local_overlay_visibility() {
     let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
     state.set_snapshot(Box::new(snapshot()));
