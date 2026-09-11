@@ -87,20 +87,15 @@ fn tab_body_style(
             }))
             .bg(theme.bg.unwrap_or(palette.surface0))
     };
-    match (focused, custom_label) {
-        (true, true) => style.add_modifier(Modifier::BOLD),
-        (false, false) => style.add_modifier(Modifier::DIM),
-        _ => style,
+    if focused && custom_label {
+        style.add_modifier(Modifier::BOLD)
+    } else {
+        style
     }
 }
 
-fn tab_number_style(
-    palette: &Palette,
-    theme: &crate::config::TabTheme,
-    body: Style,
-    focused: bool,
-) -> Style {
-    let style = if focused {
+fn tab_number_style(palette: &Palette, theme: &crate::config::TabTheme, focused: bool) -> Style {
+    if focused {
         Style::default()
             .fg(theme.active_number_fg.unwrap_or(palette.accent))
             .bg(theme
@@ -110,11 +105,6 @@ fn tab_number_style(
         Style::default()
             .fg(theme.number_fg.unwrap_or(palette.text))
             .bg(theme.number_bg.unwrap_or(palette.surface1))
-    };
-    if body.add_modifier.contains(Modifier::DIM) {
-        style.add_modifier(Modifier::DIM)
-    } else {
-        style
     }
 }
 
@@ -224,7 +214,7 @@ pub(crate) fn render_tab_bar(
             tab.custom_label,
         );
         buffer.set_style(rect, body);
-        let chip = tab_number_style(palette, &config.theme_runtime.tabs, body, tab.focused);
+        let chip = tab_number_style(palette, &config.theme_runtime.tabs, tab.focused);
         let has_chip = matches!(
             segments.first().map(|segment| segment.kind),
             Some(TabSegmentKind::Number)
@@ -514,7 +504,7 @@ fn max_tab_scroll(widths: &[u16], available: u16) -> usize {
 }
 #[cfg(test)]
 mod tests {
-    use super::max_tab_scroll;
+    use super::*;
 
     #[test]
     fn trailing_scroll_limit_accounts_for_full_widths_and_separators() {
@@ -534,5 +524,27 @@ mod tests {
                 "widths={widths:?}, available={available}"
             );
         }
+    }
+
+    #[test]
+    fn number_chip_uses_visual_position_and_unicode_display_width() {
+        let tab = ClientShellTab {
+            tab_id: "tab_99".into(),
+            workspace_id: "ws_1".into(),
+            number: 99,
+            label: "界🙂".into(),
+            custom_label: true,
+            zoomed: false,
+            focused: true,
+            agent_status: crate::api::schema::AgentStatus::Idle,
+        };
+
+        let segments = tab_segments(&tab, 2, TabNumberDisplay::Auto);
+
+        assert!(matches!(segments[0].kind, TabSegmentKind::Number));
+        assert_eq!(segments[0].text, " 3 ");
+        assert_eq!(segments[1].text, "界🙂");
+        assert_eq!(segments_width(&segments), 8);
+        assert_eq!(tab_width(&segments), 9);
     }
 }
