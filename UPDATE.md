@@ -1,9 +1,9 @@
 # Fork maintenance guide
 
-This fork (`jmoggee/herdr`) carries six implementation changes on top of
-`herdrdev/herdr`, plus companion commits that only maintain documentation. This
-file tells an agent what they are, why they exist, and what to verify after
-rebasing onto a newer upstream.
+This fork (`jmoggee/herdr`) carries seven behavioral changes across its
+implementation commits on top of `herdrdev/herdr`, plus companion commits that
+only maintain documentation. This file tells an agent what they are, why they
+exist, and what to verify after rebasing onto a newer upstream.
 
 `master` here is the integration branch. Upstream is `origin`; the fork is
 `fork`. Never push to `origin` — the authenticated account is not a maintainer
@@ -179,7 +179,7 @@ ignored profile that re-measures it against libghostty's own parse.
 A named tab hid its position, which is also its `prefix+<n>` switch key.
 
 - `src/config/model.rs` — `ui.tab_numbers` = `auto` (default) | `always` | `never`.
-- `src/ui/tabs.rs` — `tab_segments()` composes `[Number | Name | Zoom]`, and both
+- `src/client/shell/tabs.rs` — `tab_segments()` composes `[Number | Name | Zoom]`, and both
   `tab_width()` and the render loop consume it, so a tab can never be sized from
   one label and drawn from another.
 - `src/config/tab_theme.rs` (new) — `[theme.tabs]`, kept **out** of
@@ -272,6 +272,20 @@ Preserve this performance boundary: title mode must not gain periodic
 process-tree probes, and lifecycle-authority shortcuts must not suppress the
 five-second command refresh while command mode is enabled.
 
+### 7. `fix(ui): apply tab body style to full tab rect`
+
+The client-owned tab renderer must paint the resolved body style across the
+entire tab rectangle before drawing the number, name, and zoom segments. Without
+that fill, unused cells retain the tab-row background and active/custom tab body
+colors appear as narrow islands behind text instead of covering the whole tab.
+
+- `src/client/shell/tabs.rs` — `render_tab_bar()` calls
+  `buffer.set_style(rect, body)` before rendering its segments.
+
+Keep this ordering when upstream changes tab segment rendering: the fill uses
+the body style, then the chip and text segments deliberately override only the
+cells they occupy.
+
 ## Documentation-only companion commits
 
 - `docs: describe the fork's changes and how to rebase them`, and later commits
@@ -311,7 +325,7 @@ Conflict hotspots, in rough order of likelihood:
 
 | File | Why it conflicts |
 |---|---|
-| `src/ui/tabs.rs` | Segment composition, dynamic widths, scrolling, and mouse geometry |
+| `src/client/shell/tabs.rs` | Segment composition, dynamic widths, scrolling, mouse geometry, and full-rect body styling |
 | `src/workspace.rs` | Canonical label precedence and source selection, with broad call-site fanout |
 | `src/app/terminal_titles.rs` | Visibility-aware invalidation for both automatic sources |
 | `src/pane.rs` | Detector hot path and the five-second command refresh |
@@ -319,11 +333,11 @@ Conflict hotspots, in rough order of likelihood:
 | `src/protocol/wire.rs` | `CellData` is a hot struct upstream |
 | `src/protocol/render_ansi.rs` | `build_sgr` signature gained a parameter |
 | `src/app/window_title.rs` | `{tab}` indirectly depends on title or command state |
-| `src/app/input/modal.rs` and `src/app/api/tabs.rs` | Rename freezes or clears automatic mode |
+| `src/client/shell/overlay_input.rs`, `src/client/shell/context_menu.rs`, and `src/app/api/tabs.rs` | Rename freezes or clears automatic mode |
 | `src/app/mod.rs` and `src/terminal/runtime_registry.rs` | Startup, handoff, reload, and runtime tracking toggle |
 | `src/platform/windows.rs` | Agent selection and sole-child command selection share one process snapshot |
 | `src/workspace/tab.rs` and `src/persist/restore.rs` | Empty custom-name normalization |
-| `src/ui/mobile.rs`, `src/ui/navigator.rs`, `src/ui/sidebar.rs` | Every label projection must use the configured source |
+| `src/client/shell/mobile.rs`, `src/client/shell/agent_sidebar.rs`, and `src/ui/sidebar.rs` | Every label projection must use the configured source |
 | `docs/next/CHANGELOG.md` | Everyone edits the top of this file |
 | `docs/next/website/src/data/config-reference.json` | Adjacent key insertions |
 
