@@ -664,6 +664,25 @@ async fn promoted_client_window_title_uses_its_own_view() {
     );
     assert!(no_window_title(&survivor_control));
 
+    server.app.state.workspaces[0].tabs[survivor_tab_index].custom_name = None;
+    server.app.state.automatic_tab_name_source = crate::config::AutomaticTabNameSource::Command;
+    server.app.configure_window_title("{tab}");
+    server.sync_window_title();
+    assert_eq!(
+        next_window_title(&survivor_control),
+        Some(Some((survivor_tab_index + 1).to_string()))
+    );
+    assert!(
+        !server.handle_internal_event_with_forwarding(AppEvent::ForegroundCommandChanged {
+            pane_id: survivor_pane,
+            command: Some("nvim".into()),
+        },)
+    );
+    assert_eq!(
+        next_window_title(&survivor_control),
+        Some(Some("nvim".into()))
+    );
+
     shutdown_test_runtimes(&mut server);
 }
 

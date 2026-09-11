@@ -52,6 +52,23 @@ impl App {
         &self,
         pane_id: crate::layout::PaneId,
     ) -> bool {
+        let Some((workspace_index, tab_index)) = self.state.active.and_then(|workspace_index| {
+            self.state
+                .workspaces
+                .get(workspace_index)
+                .map(|workspace| (workspace_index, workspace.active_tab_index()))
+        }) else {
+            return false;
+        };
+        self.window_title_uses_foreground_command_for_target(pane_id, workspace_index, tab_index)
+    }
+
+    pub(crate) fn window_title_uses_foreground_command_for_target(
+        &self,
+        pane_id: crate::layout::PaneId,
+        workspace_index: usize,
+        tab_index: usize,
+    ) -> bool {
         self.state.automatic_tab_name_source == crate::config::AutomaticTabNameSource::Command
             && self
                 .window_title_template
@@ -59,13 +76,10 @@ impl App {
                 .is_some_and(|(template, _)| template.uses(WindowTitleToken::Tab))
             && self
                 .state
-                .active
-                .and_then(|ws_idx| self.state.workspaces.get(ws_idx))
-                .is_some_and(|workspace| {
-                    workspace
-                        .active_tab()
-                        .is_some_and(|tab| tab.is_auto_named() && tab.layout.focused() == pane_id)
-                })
+                .workspaces
+                .get(workspace_index)
+                .and_then(|workspace| workspace.tabs.get(tab_index))
+                .is_some_and(|tab| tab.is_auto_named() && tab.layout.focused() == pane_id)
     }
 
     /// Renders the configured outer window title, or `None` when window titles

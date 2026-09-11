@@ -9,7 +9,6 @@
     rustdoc::all
 )]
 pub mod bindings;
-pub mod sgr;
 
 use std::cell::Cell;
 use std::collections::hash_map::DefaultHasher;
@@ -1106,6 +1105,22 @@ impl Terminal {
 
     pub fn take_clipboard_writes(&mut self) -> Vec<Vec<u8>> {
         mem::take(&mut self.callback_state.clipboard_writes)
+    }
+
+    pub fn cursor_style(&self) -> Result<CellStyle, Error> {
+        let mut style = ffi::GhosttyStyle {
+            size: mem::size_of::<ffi::GhosttyStyle>(),
+            ..Default::default()
+        };
+        unsafe {
+            ffi::ghostty_terminal_get(
+                self.raw,
+                ffi::GhosttyTerminalData_GHOSTTY_TERMINAL_DATA_CURSOR_STYLE,
+                (&mut style as *mut ffi::GhosttyStyle).cast(),
+            )
+            .into_result()?;
+        }
+        Ok(style.into())
     }
 
     pub fn mode_get(&self, mode: u16) -> Result<bool, Error> {
