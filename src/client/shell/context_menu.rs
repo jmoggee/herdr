@@ -349,11 +349,7 @@ impl ClientShellState {
                     self.overlay = Some(ClientShellOverlay::Rename(ClientRenameOverlay {
                         title: "rename tab",
                         input: TextEditor::new(&tab.label, false),
-                        target: ClientRenameTarget::Tab {
-                            tab_id,
-                            auto_name: !tab.custom_label,
-                            original_name: tab.label.clone(),
-                        },
+                        target: ClientRenameTarget::Tab { tab_id },
                     }));
                 }
             }

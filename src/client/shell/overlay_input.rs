@@ -413,8 +413,6 @@ impl ClientShellState {
             input: TextEditor::new(&tab.label, false),
             target: ClientRenameTarget::Tab {
                 tab_id: tab.tab_id.clone(),
-                auto_name: !tab.custom_label,
-                original_name: tab.label.clone(),
             },
         }));
     }
@@ -973,16 +971,12 @@ impl ClientShellState {
                     env: Default::default(),
                 },
             )),
-            ClientRenameTarget::Tab {
-                tab_id,
-                auto_name,
-                original_name,
-            } => (!(trimmed.is_empty() || auto_name && trimmed == original_name)).then(|| {
-                crate::api::schema::Method::TabRename(crate::api::schema::TabRenameParams {
+            ClientRenameTarget::Tab { tab_id } => Some(crate::api::schema::Method::TabRename(
+                crate::api::schema::TabRenameParams {
                     tab_id,
                     label: trimmed.to_owned(),
-                })
-            }),
+                },
+            )),
             ClientRenameTarget::Pane { pane_id } => Some(crate::api::schema::Method::PaneRename(
                 crate::api::schema::PaneRenameParams {
                     pane_id,
