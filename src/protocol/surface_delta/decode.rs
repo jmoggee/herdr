@@ -285,7 +285,7 @@ fn decode_popup_update<D: Decoder<Context = DecodeContext>>(
                     }
                     let mut cells = Vec::with_capacity(count);
                     for _ in 0..count {
-                        cells.push(CellData::decode(decoder)?);
+                        cells.push(decode_cell_v1(decoder)?);
                     }
                     GridUpdate::Replace(cells)
                 }
@@ -339,7 +339,7 @@ fn decode_rows<D: Decoder<Context = DecodeContext>>(
         }
         let mut cells = Vec::with_capacity(cells_len);
         for _ in 0..cells_len {
-            cells.push(CellData::decode(decoder)?);
+            cells.push(decode_cell_v1(decoder)?);
         }
         previous_end = start + cells_len;
         rows.push(PaneSurfacePatchRow { x, y, cells });
@@ -449,6 +449,20 @@ fn frame_metadata_fits(frame: &FrameData) -> bool {
         && frame.graphics.len() <= MAX_GRAPHICS_FRAME_SIZE
 }
 
+fn decode_cell_v1<D: Decoder<Context = DecodeContext>>(
+    decoder: &mut D,
+) -> Result<CellData, DecodeError> {
+    Ok(CellData {
+        symbol: String::decode(decoder)?,
+        fg: u32::decode(decoder)?,
+        bg: u32::decode(decoder)?,
+        modifier: u16::decode(decoder)?,
+        underline_color: 0,
+        skip: bool::decode(decoder)?,
+        hyperlink: Option::<u32>::decode(decoder)?,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use serde::{ser::SerializeSeq as _, Serialize, Serializer};
@@ -464,6 +478,7 @@ mod tests {
             fg: 1,
             bg: 2,
             modifier: 0,
+            underline_color: 0,
             skip: false,
             hyperlink: None,
         }
@@ -523,7 +538,8 @@ mod tests {
             }],
             popup_cells: None::<GridUpdate>,
         };
-        let decoded = decode_bytes(&encoded(&delta), Some((4, 2))).expect("decode delta");
+        let decoded = decode_bytes(&super::super::encode_decoded_for_test(&delta), Some((4, 2)))
+            .expect("decode delta");
         assert!(decoded.surface.frame.cells.is_empty());
         assert_eq!(decoded.rows.len(), 1);
         assert_eq!(decoded.rows[0].cells, vec![cell()]);
@@ -632,7 +648,11 @@ mod tests {
             rows,
             popup_cells: None::<GridUpdate>,
         };
-        let decoded = decode_bytes(&encoded(&delta), Some((64, 64))).expect("bounded delta");
+        let decoded = decode_bytes(
+            &super::super::encode_decoded_for_test(&delta),
+            Some((64, 64)),
+        )
+        .expect("bounded delta");
         assert_eq!(decoded.rows.len(), super::super::MAX_SPANS);
     }
 
@@ -649,7 +669,9 @@ mod tests {
             }],
             popup_cells: None::<GridUpdate>,
         };
-        assert!(decode_bytes(&encoded(&delta), Some((2, 2))).is_err());
+        assert!(
+            decode_bytes(&super::super::encode_decoded_for_test(&delta), Some((2, 2))).is_err()
+        );
 
         let mut popup_surface = surface(1, 1);
         popup_surface.popup = Some(Box::new(ClientShellPopupSurface {
@@ -677,7 +699,9 @@ mod tests {
             rows: Vec::<PaneSurfacePatchRow>::new(),
             popup_cells: Some(GridUpdate::Replace(vec![cell()])),
         };
-        assert!(decode_bytes(&encoded(&delta), Some((1, 1))).is_err());
+        assert!(
+            decode_bytes(&super::super::encode_decoded_for_test(&delta), Some((1, 1))).is_err()
+        );
     }
 
     struct SurfaceWithPanes<'a> {
