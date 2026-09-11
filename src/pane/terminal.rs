@@ -24,7 +24,7 @@ mod windows_recent_fallback;
 use super::cursor::CURSOR_POSITION_SETTLE;
 use super::cursor::{CursorPositionSettleState, DecscusrTracker};
 use super::{
-    decrqss::{DecrqssQueryTracker, DecrqssResponse},
+    decrqss::{DecrqssQuery, DecrqssQueryTracker},
     input::{
         ghostty_key_event_from_terminal_key, ghostty_mouse_encoder_for_terminal,
         ghostty_mouse_event_from_button_kind, ghostty_mouse_event_from_motion_kind,
@@ -1169,8 +1169,6 @@ impl GhosttyPaneTerminal {
         let mut key_encoder =
             crate::ghostty::KeyEncoder::new().map_err(|e| std::io::Error::other(e.to_string()))?;
         key_encoder.set_from_terminal(&terminal);
-        let decrqss_query_tracker =
-            DecrqssQueryTracker::new().map_err(|e| std::io::Error::other(e.to_string()))?;
         Ok(Self {
             core: Mutex::new(GhosttyPaneCore {
                 #[cfg(test)]
@@ -1192,7 +1190,7 @@ impl GhosttyPaneTerminal {
                 child_default_background_changed: false,
                 osc_debug_tracker: OscDebugTracker::default(),
                 agent_osc_state: AgentOscStateTracker::default(),
-                decrqss_query_tracker,
+                decrqss_query_tracker: DecrqssQueryTracker::default(),
                 decscusr_tracker: DecscusrTracker::default(),
                 cursor_settle_state: CursorPositionSettleState::default(),
                 windows_powershell_prompt_cwd_reporting: false,
@@ -1403,7 +1401,7 @@ impl GhosttyPaneTerminal {
             .terminal
             .mode_get(crate::ghostty::MODE_SYNCHRONIZED_OUTPUT)
             .unwrap_or(false);
-        let decrqss_responses = core.decrqss_query_tracker.drain_pending();
+        let decrqss_queries = core.decrqss_query_tracker.drain_pending();
         let write_started = crate::render_prof::timer();
         self.write_pty_bytes_with_ordered_responses(
             &mut core,
@@ -1411,7 +1409,7 @@ impl GhosttyPaneTerminal {
             default_color_events,
             in_progress_default_color_event,
             c1_xtgettcap_responses,
-            decrqss_responses,
+            decrqss_queries,
             &mut terminal_responses,
         );
         let terminal_bells = core.terminal.take_bell_count();
@@ -1490,11 +1488,11 @@ impl GhosttyPaneTerminal {
         default_color_events: Vec<DefaultColorTrackedEvent>,
         in_progress_default_color_event: Option<DefaultColorEvent>,
         c1_xtgettcap_responses: Vec<C1XtgettcapResponse>,
-        decrqss_responses: Vec<DecrqssResponse>,
+        decrqss_queries: Vec<DecrqssQuery>,
         terminal_responses: &mut Vec<Bytes>,
     ) {
         let mut events = Vec::with_capacity(
-            default_color_events.len() + c1_xtgettcap_responses.len() + decrqss_responses.len(),
+            default_color_events.len() + c1_xtgettcap_responses.len() + decrqss_queries.len(),
         );
         events.extend(
             default_color_events
@@ -1507,7 +1505,7 @@ impl GhosttyPaneTerminal {
                 .map(OrderedPtyResponseEvent::C1Xtgettcap),
         );
         events.extend(
-            decrqss_responses
+            decrqss_queries
                 .into_iter()
                 .map(OrderedPtyResponseEvent::Decrqss),
         );
@@ -1554,9 +1552,17 @@ impl GhosttyPaneTerminal {
                         terminal_responses.push(response.bytes);
                     }
                 }
-                OrderedPtyResponseEvent::Decrqss(response) => {
+                OrderedPtyResponseEvent::Decrqss(_) => {
+                    let underline_color = core
+                        .terminal
+                        .cursor_style()
+                        .ok()
+                        .and_then(|style| style.underline_color);
+                    add_underline_color_to_decrqss_reply(
+                        &mut libghostty_responses,
+                        underline_color,
+                    );
                     terminal_responses.extend(libghostty_responses);
-                    terminal_responses.push(response.bytes);
                 }
             }
         }
@@ -3338,7 +3344,7 @@ fn ghostty_cell_style(
 enum OrderedPtyResponseEvent {
     DefaultColor(DefaultColorTrackedEvent),
     C1Xtgettcap(C1XtgettcapResponse),
-    Decrqss(DecrqssResponse),
+    Decrqss(DecrqssQuery),
 }
 
 impl OrderedPtyResponseEvent {
@@ -3349,6 +3355,36 @@ impl OrderedPtyResponseEvent {
             Self::Decrqss(response) => response.end_offset,
         }
     }
+}
+
+fn add_underline_color_to_decrqss_reply(
+    responses: &mut [Bytes],
+    underline_color: Option<crate::ghostty::CellColor>,
+) {
+    let Some(underline_color) = underline_color else {
+        return;
+    };
+    let Some(response) = responses
+        .iter_mut()
+        .rfind(|response| response.starts_with(b"\x1bP1$r") && response.ends_with(b"m\x1b\\"))
+    else {
+        return;
+    };
+    if response.windows(4).any(|window| window == b";58:") {
+        return;
+    }
+    let fragment = match underline_color {
+        crate::ghostty::CellColor::Palette(index) => format!(";58:5:{index}"),
+        crate::ghostty::CellColor::Rgb(color) => {
+            format!(";58:2::{}:{}:{}", color.r, color.g, color.b)
+        }
+    };
+    let insert_at = response.len().saturating_sub(3);
+    let mut augmented = Vec::with_capacity(response.len() + fragment.len());
+    augmented.extend_from_slice(&response[..insert_at]);
+    augmented.extend_from_slice(fragment.as_bytes());
+    augmented.extend_from_slice(&response[insert_at..]);
+    *response = Bytes::from(augmented);
 }
 
 fn remove_last_matching_libghostty_color_reply(
@@ -6690,11 +6726,16 @@ mod tests {
         let pane = GhosttyPaneTerminal::new(terminal, tx.clone()).unwrap();
         let pane_id = PaneId::from_raw(1);
 
-        let result = pane.process_pty_bytes(pane_id, 0, b"\x1b[4:3m\x1bP$qm\x1b\\\x1b[0m", &tx);
+        let result = pane.process_pty_bytes(
+            pane_id,
+            0,
+            b"\x1b[4:3;58:2::17:34:51m\x1bP$qm\x1b\\\x1b[0m",
+            &tx,
+        );
 
         assert_eq!(
             result.terminal_responses,
-            vec![Bytes::from_static(b"\x1bP1$r0;4:3m\x1b\\")]
+            vec![Bytes::from_static(b"\x1bP1$r0;4:3;58:2::17:34:51m\x1b\\")]
         );
         assert!(rx.try_recv().is_err());
     }

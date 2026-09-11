@@ -5,6 +5,24 @@ implementation commits on top of `herdrdev/herdr`, plus companion commits that
 only maintain documentation. This file tells an agent what they are, why they
 exist, and what to verify after rebasing onto a newer upstream.
 
+The latest comparison is against upstream `0d14759c` on 2026-09-16. Upstream
+still lacks a complete equivalent for every behavior below, so the fork cannot
+yet be retired. Upstream remains on private protocol 22; the fork remains on 23
+because its `CellData` wire layout still carries underline color.
+
+Since the previous comparison, upstream added per-client window-title targets,
+full-last-tab reveal in overflowing strips, bounded Linux process-tree scans,
+metadata-only terminal-surface reuse, incremental remote surface deltas, and
+cursor-based text editors. It also stopped dimming inactive automatic tab and
+sidebar labels, and landed a broad set of remote-client, input, Windows, agent,
+session, and machine robustness fixes. Several changes are partial equivalents
+or new integration points for this fork: automatic names now use upstream's
+client-specific title target and bounded process scan; tab chips retain
+upstream's full-tab scroll limit and readable inactive styling; rename overlays
+use upstream's `TextEditor`; and underline colors preserve the frozen
+`endpoint.surface-delta.v1` layout by falling back to a full protocol-23 frame
+when a delta would otherwise discard SGR 58.
+
 `master` here is the integration branch. Upstream is `origin`; the fork is
 `fork`. Never push to `origin` — the authenticated account is not a maintainer
 of the canonical repository, and `CLAUDE.md`'s external contributor guardrail
@@ -29,43 +47,45 @@ takes **over an hour** and dozens of integration tests fail on timeouts. Built
 correctly it takes **0.08 s** and those failures disappear. If tests look
 catastrophically broken or slow, check this before investigating anything else.
 
-## Historical test-failure snapshot
+## Current pristine comparison
 
-The lists below were measured when rebasing onto `6045fe6a`. They are diagnostic
-context, never an allowlist for an unattended push: upstream and this machine
-have both changed since then. On every rebase, run the same suite in the rebased
-fork and a detached pristine worktree at the exact new `origin/master`, then
-compare sorted failures. Any fork-only failure blocks the push.
+The full, non-fail-fast suite was compared against a detached pristine worktree
+at exact upstream `0d14759c` on 2026-09-16. The fork ran 3,666 tests: 3,623
+passed, 43 failed, and six were skipped. Pristine upstream ran 3,638 tests:
+3,594 passed, 44 failed, and six were skipped. Every fork failure also failed in
+pristine upstream. Pristine alone failed
+`session_appearing_after_startup_is_preserved_before_autosave`, an intermittent
+session-readiness test that did not fail in the fork run. There were no
+fork-only failures.
 
-At that snapshot, 15 unit tests failed in both trees from environmental
-workspace cwd discovery, git metadata, clipboard access, process, and PTY
-spawning:
+The shared failures are environmental on this machine: process/cwd discovery,
+git worktree setup, clipboard access, PTY spawning, headless shell startup,
+agent startup, machine-bridge fixtures, and live handoff. Grouped by test
+surface, the identical failures were:
 
 ```
+api_ping::*cwd*                                              (2)
+cli::cases::agents::agent_start_*                            (3)
+machine_api::*                                               (8)
+machine_setup::*                                             (5)
+remote_attach::ssh_check_message_is_visible_while_authentication_waits (1)
 app::api::layouts::tests::*                                  (3)
 app::api::tabs::tests::tab_create_follows_cached_*           (1)
+app::api::tests::pane_died_respawns_shell_*                  (1)
 app::api::workspaces::tests::workspace_create_*              (2)
-app::api::worktrees::tests::*                                (3)
-app::tests::pane_split_request_*                             (3)
-detect::tests::foreground_job_detects_agent_behind_shell_wrapper
-platform::linux::tests::failed_wl_copy_uses_x11_fallback
-pty::backend::unix::tests::portable_pty_setup_leaves_one_parent_pty_fd
+app::api::worktrees::tests::*                                (7)
+app::tests::{pane_exit_checkpoint_*,pane_split_request_*}     (4)
+live_handoff::live_handoff_keeps_unmanaged_agent_name_*       (1)
+detect::tests::foreground_job_detects_agent_behind_shell_*    (1)
+platform::linux::tests::failed_wl_copy_uses_x11_fallback      (1)
+pty::backend::unix::tests::portable_pty_setup_*               (1)
+server::headless::tests::*                                    (2)
 ```
 
-Six integration tests (`tests/*.rs`, run as `herdr::<binary>`) also failed in
-both trees, from agent startup, live handoff, and cwd following:
-
-```
-api_ping::{new_terminal_cwd_follow_ignores_nonleader_group_member_cwd,
-           pane_info_reports_foreground_cwd_without_changing_pane_cwd}
-cli::cases::agents::agent_start_*                        (3)
-live_handoff::live_handoff_keeps_unmanaged_agent_name_bound_to_saved_session
-```
-
-The `client_mode`, `cross_area`, and `multi_client` integration tests are
-**not** on that list. They decode frames with hand-written `CellWire` mirrors
-of `CellData`, so a `CellData` field that is missing from those mirrors fails
-them with `InvalidIntegerType { expected: U16, found: U32 }`. That is ours.
+This snapshot is diagnostic context, never an allowlist for an unattended push.
+Upstream and the machine can both change. On every rebase, rerun the same suite
+in the fork and a detached pristine worktree at the exact new `origin/master`,
+then compare sorted test names. Any fork-only failure blocks the push.
 
 Use a pristine worktree rather than a stash:
 `git worktree add /tmp/herdr-pristine <upstream-sha> --detach`. Run the same
@@ -73,22 +93,51 @@ command there and diff the two sorted failure lists. That keeps the rebased tree
 intact and lets both runs happen back to back. Always unregister it afterward
 with `git worktree remove /tmp/herdr-pristine`, including when comparison fails.
 
-The historical total was **21**, identical in the fork and pristine upstream.
-Do not carry that number forward without a new comparison. Two details made that
-run readable:
+Do not carry the current total forward without a new comparison. Two details
+make the paired run readable:
 
 - Bound the hangs. `cases::plugins::plugin_install_*` can wedge indefinitely
   under load. `--config-file` a profile with
   `slow-timeout = { period = "60s", terminate-after = 4 }` so a stuck test is
   killed instead of stalling the suite for an hour.
 - `client_mode`, `cross_area`, and `multi_client` passing is the signal that the
-  `CellData`/`CellWire` work survived. They are the fork's canary; treat any
-  failure there as ours until proven otherwise.
+  `CellData` wire change survived. They are the fork's canary; treat any failure
+  there as ours until proven otherwise.
 
-At that snapshot, `just check` could not run fully because the dev shell lacked
-`python3` and `bun`. Use the current `just` recipes first; only narrow validation
-when a current failure proves the environment still lacks a required tool, and
-record the exact omission in the sync report.
+`just check` stops at its fail-fast nextest step on the two shared `api_ping` cwd
+failures above. Run the remaining maintenance, architecture, integration-asset,
+Windows lint, and docs recipes separately so that baseline failure does not hide
+their results. If a later run fails elsewhere, compare that exact command in the
+pristine worktree rather than assuming this snapshot still applies.
+
+### Validation at `0d14759c`
+
+- `cargo fmt --check`, Clippy with warnings denied, the six UI hot-path
+  architecture tests, the generated API schema check, the 23 surface-delta
+  tests, and the fork's focused regression tests passed.
+- `just bench-render-scale` passed. At 15 panes the combined render pipeline was
+  1.03× the one-pane median for background workspaces and 1.10× for active panes;
+  client-shell composition was 1.08× and 0.94× respectively. The benchmark also
+  exercised upstream's surface reuse and delta paths with 1 and 15 panes.
+- `just check` stopped on the same two `api_ping` cwd failures in both trees. The
+  complete non-fail-fast comparison above establishes that the remaining suite
+  has no fork-only failure.
+- `just maintenance-test` had the same single missing-`openssl` host failure in
+  both trees. `just integration-assets-test` and `just docs-contract-test` could
+  not start in either tree because `bun` is absent; `just windows-lint` could not
+  start because this machine has no Windows SDK/Zig libc configuration. These are
+  toolchain baselines, not fork exceptions, and must be rechecked from scratch on
+  the next sync.
+- Live checks used the checkout's `herdr 0.9.0` binary in disposable named session
+  `fork-sync-20260916-153807`. This maintenance shell was not attached to a parent
+  Herdr session, so the checkout TUI ran directly in a dedicated PTY instead of an
+  outer Herdr pane. A direct pane probe and Neovim 0.13 nightly both rendered
+  `4:3` plus `58;2;17;34;51`; title labels followed focus from `TITLE_ONE` to
+  `TITLE_TWO`; a custom `FROZEN` name stayed fixed until an empty API rename
+  restored `TITLE_THREE`; command mode moved `fish` → `sleep` → `fish`; and
+  returning to title mode while `sleep` was active restored `TITLE_FOUR`. The
+  named session, temporary config, PTY, and reproduction directory were removed
+  afterward.
 
 ## Implementation changes
 
@@ -106,22 +155,38 @@ colored undercurls rendered in the text foreground color.
 - `src/pane/terminal.rs` — `cell_data_from_style` carries it too. **There are two
   independent paths**: `from_ratatui_cell` (full-frame) and `cell_data_from_style`
   (dirty-patch). Both need the field; fixing one silently leaves the other broken.
-- `tests/client_mode.rs`, `tests/cross_area.rs`, `tests/multi_client.rs` — each
-  has a hand-written `CellWire` mirror of `CellData` used to decode frames off
-  the socket. `underline_color` sits between `modifier` and `skip` there too;
-  bincode is positional, so the field order must match `CellData` exactly.
+- `src/protocol/surface_delta.rs` and `surface_delta/decode.rs` — upstream's
+  named `endpoint.surface-delta.v1` codec is frozen with the original six-field
+  cell layout. A zero-allocation `CellV1` serializer keeps those bytes unchanged,
+  and the decoder restores `underline_color` as zero. A changed row or popup
+  replacement containing a nonzero underline color declines the delta so the
+  server sends the full protocol-23 frame instead of silently dropping SGR 58.
 
-**Current protocol state.** `PROTOCOL_VERSION` is **22** in the fork. Upstream
-source is protocol 21, stable publishes protocol 20, and preview publishes
-protocol 21. Because the fork's wider `CellData` differs from the now-published
-preview protocol 21 wire layout, the fork owns the bump to 22. The historical
-`fix: bump the wire protocol for the pane underline color field` commit remains
-documentation-only after the latest rebase; do not infer protocol ownership or
-necessity from its subject.
+Regression tests: `cell_data_carries_underline_color_from_ratatui_cell`,
+`frame_data_restores_underline_color_into_ratatui_buffer`,
+`render_preserves_underline_color`, `build_sgr_emits_rgb_underline_color`, and
+`cells_visually_equal_detects_underline_color_change` cover the full-frame,
+dirty-patch, ANSI, and repaint paths.
+`surface_delta_uses_full_frame_for_underline_color_changes` pins the safe delta
+fallback. The `PaneSurface` bincode digest tests pin the changed positional
+layout, while the upstream surface-delta fixture digest remains unchanged.
+
+Upstream equivalent: partial only. Upstream `src/ghostty/mod.rs` exposes
+libghostty's underline color and `src/pane/terminal.rs` restores it into a pane
+style. Its new surface reuse and delta codecs avoid many complete cell payloads,
+but upstream `CellData` still has no underline-color field and its ANSI client
+renderer cannot emit SGR 58. The color is still lost at the pane/client boundary
+without this fork change.
+
+**Current protocol state.** `PROTOCOL_VERSION` is **23** in the fork. Upstream
+source, stable 0.9.0, and the current preview all publish protocol 22. Because
+the fork's wider `CellData` is incompatible with that published layout, the fork
+owns the bump to 23.
 
 Recompute this after every rebase. Compare the rebased fork's wire layout and
-version with upstream source and the `protocol` fields in `website/latest.json`
-and `website/preview.json`. If the fork still differs from upstream at protocol
+version with upstream source and the `protocol` fields in
+`distribution/latest.json` and `distribution/preview.json`. If the fork still
+differs from upstream at protocol
 `V` and either channel has published `V`, bump the fork to `V+1`. A bump touches
 four things besides the constant, and missing any one fails a large and
 misleading block of tests:
@@ -143,36 +208,39 @@ conflict.
 
 Both release metadata files belong to upstream and must never be edited here.
 If upstream adds equivalent underline-color transport, check the full-frame,
-dirty-patch, ANSI-render, visual-equality, and hand-written `CellWire` paths
-before dropping this fork change.
+dirty-patch, ANSI-render, visual-equality, and bincode digest paths before
+dropping this fork change.
 
 ### 2. `fix: answer decrqss sgr queries in panes` (refs #1178)
 
 Neovim decides whether it may emit undercurl by writing `CSI 4:3 m`, asking for
 the SGR state with DECRQSS, and checking whether the reply echoes the curly
-style. Herdr never answered, so Neovim fell back to a plain underline.
+style. Older upstream Herdr stayed silent, so Neovim fell back to a plain
+underline. Upstream now answers and preserves `4:3`, but its response omits the
+active SGR 58 underline color. This fork keeps the complete style query.
 
-- `src/pane/decrqss.rs` (new) — `DecrqssQueryTracker`, shaped exactly like
-  `xtgettcap.rs`: `observe(&[u8])` then `drain_pending()`, with responses
-  interleaved at recorded byte offsets. Holds a shadow SGR pen, and honours
-  DECSC/DECRC, RIS, DECSTR, and mode 1049 so the pen cannot drift.
-- `src/ghostty/sgr.rs` (new) — safe wrapper over libghostty's own SGR parser
-  (`ghostty_sgr_set_params` / `ghostty_sgr_next`). SGR semantics are deliberately
-  **not** reimplemented. Note the separator convention: `separators[i]` is the
-  byte *following* parameter `i`, so `4:3` arrives as params `[4, 3]` with a
-  colon at index 0. A test pins this both ways.
-- `src/pane/terminal.rs` — a field on the core, an observe/drain pair beside the
-  other trackers, and a third `OrderedPtyResponseEvent` variant.
+- `src/ghostty/mod.rs` — `Terminal::cursor_style()` wraps upstream's
+  `GHOSTTY_TERMINAL_DATA_CURSOR_STYLE`; libghostty remains the single owner of
+  SGR state.
+- `src/pane/decrqss.rs` — a small tracker records only DECRQSS SGR query end
+  offsets, including split and eight-bit control forms. It does not parse SGR
+  or hold a shadow pen.
+- `src/pane/terminal.rs` — the ordered response stream writes through each query,
+  drains libghostty's native reply, reads the live cursor style at that boundary,
+  and inserts `58:5:n` or `58:2::r:g:b` when libghostty has not already supplied
+  one.
 
-The reply mirrors libghostty's `printAttributes` with two deliberate
-divergences: the underline *style* is reported exactly (`4:3`, not flattened to
-`4`) and the underline color is included. Ghostty can omit both because it ships
-terminfo with `Smulx`; over `TERM=xterm-256color` this reply is Neovim's only
-channel.
+Regression tests: the `pane::decrqss` tests pin query boundaries, split writes,
+eight-bit controls, and false-positive avoidance.
+`process_pty_bytes_answers_neovim_extended_underline_probe` and
+`process_pty_bytes_orders_decrqss_reply_before_following_xtgettcap_reply` pin
+one augmented reply and its order relative to native XTGETTCAP.
 
-Cost: about **5.2%** on top of the parse the pane already does, measured on an
-SGR-dense stream. `pane::decrqss::tests::decrqss_observe_scale_profile` is an
-ignored profile that re-measures it against libghostty's own parse.
+Upstream equivalent: partial. The libghostty upgrade supplies the DECRQSS reply,
+exact extended underline style, live cursor-style accessor, and ordinary
+XTGETTCAP responses. This rebase deleted the fork's full SGR parser, shadow pen,
+and duplicate response generation. Upstream still omits underline color from
+`Terminal.printAttributes`, so the query-boundary augmentation remains.
 
 ### 3. `feat(ui): show tab numbers as chips in the desktop tab row`
 
@@ -194,18 +262,42 @@ number chips and names, with unset values following the semantic palette.
 
 Two invariants worth protecting:
 
-- **Width uses `display_width_u16`, never `.chars().count()`.** An earlier
+- **Width uses `display_width`, never `.chars().count()`.** An earlier
   implementation of this feature swapped it and broke CJK and emoji tab names.
 - **The chip shows the tab's position, never `Tab::number`.** The stored number
   backs the public `w1:t<n>` id and deliberately does not renumber; using it
-  shows stale numbers after a tab is closed. Pinned by a test built on
-  `AppState::test_with_adversarial_identity_state()`.
+  shows stale numbers after a tab is closed.
+
+Regression tests: `tab_numbers_default_to_auto_and_parse_every_policy` pins the
+setting. `number_chip_uses_visual_position_and_unicode_display_width` uses a
+stable public number of 99 at visual position 3 and a CJK-plus-emoji label to
+pin both invariants. `themed_tab_bar_paints_number_body_and_surrounding_bar`
+checks the rendered chip separately from the body. Upstream's
+`trailing_scroll_limit_accounts_for_full_widths_and_separators` remains in the
+merged renderer and pins its full-last-tab scroll behavior with segment widths.
+
+Upstream equivalent: partial only. Upstream now reveals the full final tab in an
+overflowing strip and provides the `max_tab_scroll` algorithm this fork uses.
+It still centers one combined label and has no `ui.tab_numbers` policy,
+number/name segmentation, or chip styling.
 
 ### 4. `feat(ui): let the tab row background be themed separately`
 
 `[theme.tabs] bar_bg` detaches the row's background from `panel_bg`, which also
 paints menus, popups, and panel shells. Three sites paint the row (fill, status
-separator, status segments) and all route through `tab_bar_bg()`.
+separator, status segments) use the same resolved `bar_bg` value.
+
+Implementation: `TabThemeConfig::resolve()` parses `bar_bg`; the client-owned
+`render_tab_bar()` fills the row with it and passes it to the right-side status
+renderer, whose separators and segment backgrounds use the same color.
+
+Regression tests: `resolves_every_element_independently` and
+`a_tmux_window_status_style_can_be_expressed_in_full` pin parsing;
+`themed_tab_bar_paints_number_body_and_surrounding_bar` inspects the composed
+frame and proves surrounding cells use `bar_bg`.
+
+Upstream equivalent: none. Upstream still paints the desktop tab row and status
+segments with `palette.panel_bg`, which also controls other panel surfaces.
 
 ### 5. `feat(ui): name tabs from focused terminal titles`
 
@@ -238,10 +330,25 @@ tab as visible whenever the row exists, including tabs scrolled offscreen;
 Navigator, mobile navigation, relevant sidebar tokens, and an outer title using
 `{tab}` have their own visibility paths.
 
-Dynamic labels change geometry. `compute_tab_bar_view()` precomputes each width
-once before its scroll-search loops, and sizing, rendering, and mouse hit areas
-must consume the same resolved label. Do not put terminal-state locking, title
-formatting, or allocation back inside pane-scaled render loops.
+Dynamic labels change geometry. Client-shell projection resolves each label
+before rendering, and `render_tab_bar()` computes every segment list and width
+once before its scroll-search loops. Sizing, rendering, and mouse hit areas must
+consume those same values. Do not put terminal-state locking, title formatting,
+or allocation back inside pane-scaled render loops.
+
+Regression tests: `automatic_tab_name_tracks_focused_pane_until_explicitly_named`
+pins focus, custom-name precedence, clearing, and both sources.
+`saving_rename_makes_the_current_automatic_name_static` and
+`saving_empty_tab_rename_restores_automatic_name` pin client rename semantics.
+Window-title, API, plugin-context, notification, mobile, Navigator, and sidebar
+tests exercise the shared resolver through their existing projections.
+
+Upstream equivalent: partial only. Upstream now scopes outer window titles to
+each attached client's workspace and tab, and its rename overlays use a shared
+cursor-based `TextEditor`. This fork uses both upstream structures. Upstream's
+`Workspace::tab_display_name()` still returns a custom label or visual position
+only; it does not use the focused pane's OSC title, restore automation after an
+empty rename, or project dynamic names to the other surfaces.
 
 ### 6. `feat(ui): allow command-based automatic tab names`
 
@@ -272,6 +379,23 @@ Preserve this performance boundary: title mode must not gain periodic
 process-tree probes, and lifecycle-authority shortcuts must not suppress the
 five-second command refresh while command mode is enabled.
 
+Regression tests: `automatic_tab_name_source_defaults_to_title_and_parses_command`,
+`foreground_command_updates_command_named_tabs_only_when_visible`,
+`foreground_command_updates_command_named_outer_title_without_tab_bar`, and
+`command_tracking_rechecks_stable_process_groups_periodically` pin the config,
+invalidation boundary, outer title, and refresh cadence. Windows-only selection
+tests pin sole-child versus ambiguous-child fallback.
+`promoted_client_window_title_uses_its_own_view` now also pins command-based
+title invalidation for a client viewing a non-global tab, without requesting a
+generic full render.
+
+Upstream equivalent: partial only. Upstream now bounds Linux foreground
+process-tree scans and scopes window titles to each client's view; the fork uses
+those APIs instead of retaining its former scan or global-title assumptions.
+Upstream still does not cache a foreground command in `TerminalState`, opt
+runtimes into periodic command probes, expose this setting, or use commands as
+tab labels.
+
 ### 7. `fix(ui): apply tab body style to full tab rect`
 
 The client-owned tab renderer must paint the resolved body style across the
@@ -286,16 +410,33 @@ Keep this ordering when upstream changes tab segment rendering: the fill uses
 the body style, then the chip and text segments deliberately override only the
 cells they occupy.
 
+Regression test: `themed_tab_bar_paints_number_body_and_surrounding_bar`
+inspects the final unused cell in a named tab rectangle and confirms it has the
+active body background, while the number and surrounding row keep their own
+backgrounds.
+
+Upstream equivalent: partial only. Upstream now leaves inactive automatic tab
+labels undimmed so host-terminal faint styling cannot stack and make them
+unreadable; the fork retains that behavior for both the body and number chip.
+Upstream still fills only the row, then draws centered label text without first
+applying a separately themed tab body style to the whole hit rectangle.
+
 ## Documentation-only companion commits
 
 - `docs: describe the fork's changes and how to rebase them`, and later commits
   that only refresh `UPDATE.md`, maintain this guide without runtime behavior.
 - `docs: list the tab row settings in the default config` changes generated
   default-config comments in `src/main.rs`, not parser or runtime behavior.
-- `fix: bump the wire protocol for the pane underline color field` is currently
-  documentation-only after upstream supplied protocol 21. Its historical subject
-  records why a bump was once needed; recompute the protocol state after every
-  rebase rather than preserving a source change that no longer exists.
+
+Do not classify the fork from old commit subjects alone. Rebase conflict
+resolution has moved small pieces between commits over time. The final diff
+against `origin/master` is authoritative. In this run, protocol 23 is runtime
+behavior owned by the underline-color change, while old protocol-bump commits
+contain only guide, generated-reference, or import cleanup after replay.
+
+Normal fork syncs do not add entries to `docs/next/CHANGELOG.md`. Upstream owns
+release curation, and carrying fork-only entries there creates conflicts without
+preserving behavior.
 
 ## Updating onto a newer upstream
 
@@ -321,6 +462,12 @@ shell calls for the landing command. Fetching the fork is not permission to
 overwrite commits found there: fast-forward when the fork is simply ahead, and
 stop when histories diverge.
 
+An interrupted earlier sync can leave local `master` rebased while `fork/master`
+still points at the old series. Resume that prepared rebase only when the saved
+`herdr-fork-before` value exactly equals the freshly fetched fork tip, reflog
+identifies the prior upstream base, and `git range-diff` accounts for every fork
+commit with no independent local work. Otherwise use the divergence stop above.
+
 Conflict hotspots, in rough order of likelihood:
 
 | File | Why it conflicts |
@@ -331,6 +478,7 @@ Conflict hotspots, in rough order of likelihood:
 | `src/pane.rs` | Detector hot path and the five-second command refresh |
 | `src/pane/terminal.rs` | Both terminal fixes sit beside other query trackers |
 | `src/protocol/wire.rs` | `CellData` is a hot struct upstream |
+| `src/protocol/surface_delta.rs` and `src/protocol/surface_delta/decode.rs` | Frozen generation-1 delta cells must keep the upstream six-field layout; underline changes fall back to full frames |
 | `src/protocol/render_ansi.rs` | `build_sgr` signature gained a parameter |
 | `src/app/window_title.rs` | `{tab}` indirectly depends on title or command state |
 | `src/client/shell/overlay_input.rs`, `src/client/shell/context_menu.rs`, and `src/app/api/tabs.rs` | Rename freezes or clears automatic mode |
@@ -338,7 +486,6 @@ Conflict hotspots, in rough order of likelihood:
 | `src/platform/windows.rs` | Agent selection and sole-child command selection share one process snapshot |
 | `src/workspace/tab.rs` and `src/persist/restore.rs` | Empty custom-name normalization |
 | `src/client/shell/mobile.rs`, `src/client/shell/agent_sidebar.rs`, and `src/ui/sidebar.rs` | Every label projection must use the configured source |
-| `docs/next/CHANGELOG.md` | Everyone edits the top of this file |
 | `docs/next/website/src/data/config-reference.json` | Adjacent key insertions |
 
 ### After rebasing, check in this order
@@ -349,12 +496,12 @@ Conflict hotspots, in rough order of likelihood:
    guide when the count, ownership, or behavior changed during the rebase.
 2. **Build correctly** (see the top of this file), then
    `cargo fmt --check` and `cargo clippy --all-targets --locked -- -D warnings`.
-3. **Frame digest characterization tests will fail if upstream changed rendering.**
-   `ui::tab_surface::tests::desktop_full_app_semantic_frame_is_characterized` and
-   its `mobile_` sibling SHA-256 the bincode-encoded `FrameData`. Any change to
-   `CellData` or the tab row moves them. Read the new digest from the failure and
-   update it — but first confirm the test's other assertions (geometry, cursor,
-   hyperlinks) still pass, because those failing means something real broke.
+3. **Run the wire and tab-render characterizations early.** The `PaneSurface`
+   bincode digests in `src/protocol/wire.rs` move when `CellData` changes.
+   `number_chip_uses_visual_position_and_unicode_display_width` and
+   `themed_tab_bar_paints_number_body_and_surrounding_bar` pin the current
+   client-shell tab geometry and styles. Treat a digest or frame change as a
+   review point, not a value to update blindly.
 4. **Run the suite** in both trees and compare their sorted failure lists. Remove
    the pristine worktree afterward. Any fork-only failure blocks the push; the
    historical snapshot above cannot authorize it.
@@ -364,6 +511,7 @@ Conflict hotspots, in rough order of likelihood:
 ```bash
 just test-one automatic_tab_name_tracks_focused_pane_until_explicitly_named
 just test-one saving_rename_makes_the_current_automatic_name_static
+just test-one saving_empty_tab_rename_restores_automatic_name
 just test-one automatic_tab_name_source_defaults_to_title_and_parses_command
 just test-one foreground_command_updates_command_named_tabs_only_when_visible
 just test-one foreground_command_updates_command_named_outer_title_without_tab_bar

@@ -1,7 +1,7 @@
 //! Optional sparse delivery of a completely recomputed pane surface.
 
 use base64::{engine::general_purpose::STANDARD_NO_PAD, Engine as _};
-use serde::{Deserialize, Serialize};
+use serde::{ser::SerializeSeq as _, Deserialize, Serialize};
 
 use super::{CellData, PaneSurfaceFrame, PaneSurfacePatchRow, ServerMessage};
 
@@ -50,13 +50,43 @@ pub(crate) fn apply_rows(cells: &mut [CellData], width: u16, rows: &[PaneSurface
 struct CellSpan<'a> {
     x: u16,
     y: u16,
-    cells: &'a [CellData],
+    cells: CellsV1<'a>,
 }
 
 #[derive(Serialize)]
 enum GridUpdateRef<'a> {
     Patch(Vec<CellSpan<'a>>),
-    Replace(&'a [CellData]),
+    Replace(CellsV1<'a>),
+}
+
+#[derive(Clone, Copy)]
+struct CellsV1<'a>(&'a [CellData]);
+
+impl Serialize for CellsV1<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut cells = serializer.serialize_seq(Some(self.0.len()))?;
+        for cell in self.0 {
+            cells.serialize_element(&CellV1(cell))?;
+        }
+        cells.end()
+    }
+}
+
+struct CellV1<'a>(&'a CellData);
+
+impl Serialize for CellV1<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeTuple as _;
+
+        let mut cell = serializer.serialize_tuple(6)?;
+        cell.serialize_element(&self.0.symbol)?;
+        cell.serialize_element(&self.0.fg)?;
+        cell.serialize_element(&self.0.bg)?;
+        cell.serialize_element(&self.0.modifier)?;
+        cell.serialize_element(&self.0.skip)?;
+        cell.serialize_element(&self.0.hyperlink)?;
+        cell.end()
+    }
 }
 
 fn changed_rows<'a>(
@@ -88,8 +118,11 @@ fn changed_rows<'a>(
             let span = CellSpan {
                 x: start as u16,
                 y: y as u16,
-                cells: &new_row[start..x],
+                cells: CellsV1(&new_row[start..x]),
             };
+            if span.cells.0.iter().any(|cell| cell.underline_color != 0) {
+                return Ok(None);
+            }
             size += encoded_size(&span)?;
             // This lower bound excludes metadata, so aborting cannot discard a smaller delta.
             if rows.len() == MAX_SPANS
@@ -162,7 +195,10 @@ pub(crate) fn message(
                 };
                 Some(GridUpdateRef::Patch(rows))
             } else {
-                Some(GridUpdateRef::Replace(grid))
+                if grid.iter().any(|cell| cell.underline_color != 0) {
+                    return Ok(None);
+                }
+                Some(GridUpdateRef::Replace(CellsV1(grid)))
             }
         } else {
             None
@@ -196,6 +232,40 @@ pub(crate) fn message(
     };
     let size = encoded_size(&message)?;
     Ok((size <= max && size < full_size).then_some(message))
+}
+
+#[cfg(test)]
+fn encode_decoded_for_test(delta: &SurfaceDelta<PaneSurfaceFrame>) -> Vec<u8> {
+    let rows: Vec<_> = delta
+        .rows
+        .iter()
+        .map(|row| CellSpan {
+            x: row.x,
+            y: row.y,
+            cells: CellsV1(&row.cells),
+        })
+        .collect();
+    let popup_cells = delta.popup_cells.as_ref().map(|update| match update {
+        GridUpdate::Patch(rows) => GridUpdateRef::Patch(
+            rows.iter()
+                .map(|row| CellSpan {
+                    x: row.x,
+                    y: row.y,
+                    cells: CellsV1(&row.cells),
+                })
+                .collect(),
+        ),
+        GridUpdate::Replace(cells) => GridUpdateRef::Replace(CellsV1(cells)),
+    });
+    let encoded = SurfaceDelta {
+        base_projection_revision: delta.base_projection_revision,
+        base_surface_revision: delta.base_surface_revision,
+        surface: &delta.surface,
+        rows,
+        popup_cells,
+    };
+    bincode::serde::encode_to_vec(encoded, bincode::config::standard())
+        .expect("encode surface delta v1")
 }
 
 #[cfg(test)]
@@ -261,6 +331,18 @@ mod tests {
             panic!("full fallback");
         };
         assert_eq!(next, expected, "encoding must not consume the target grid");
+    }
+
+    #[test]
+    fn surface_delta_uses_full_frame_for_underline_color_changes() {
+        let last = surface();
+        let mut next = last.clone();
+        next.surface_revision += 1;
+        next.frame.cells[0].underline_color = 0xff11_2233;
+
+        let mut full = ServerMessage::PaneSurface(next.clone());
+        assert!(message(&last, &mut full).unwrap().is_none());
+        assert_eq!(full, ServerMessage::PaneSurface(next));
     }
 
     #[test]
@@ -390,9 +472,7 @@ mod tests {
                 .unwrap();
             let bad = ServerMessage::EndpointControl {
                 kind: MESSAGE_KIND.into(),
-                data: STANDARD_NO_PAD.encode(
-                    bincode::serde::encode_to_vec(&corrupt, bincode::config::standard()).unwrap(),
-                ),
+                data: STANDARD_NO_PAD.encode(encode_decoded_for_test(&corrupt)),
             };
             assert!(decoder.decode(bad).is_err(), "case {case}");
             let ServerMessage::PaneSurface(decoded) = decoder.decode(update.clone()).unwrap()
@@ -463,7 +543,7 @@ mod tests {
         assert_eq!(spans.len(), next.frame.cells.len() / 2);
         for span in spans {
             let start = usize::from(span.y) * 120 + usize::from(span.x);
-            assert_eq!(span.cells.as_ptr(), next.frame.cells[start..].as_ptr());
+            assert_eq!(span.cells.0.as_ptr(), next.frame.cells[start..].as_ptr());
         }
         assert!(changed_rows(&last.frame.cells, &next.frame.cells, 120, 1)
             .unwrap()
@@ -525,9 +605,7 @@ mod tests {
         });
         let bad = ServerMessage::EndpointControl {
             kind: MESSAGE_KIND.into(),
-            data: STANDARD_NO_PAD.encode(
-                bincode::serde::encode_to_vec(&corrupt, bincode::config::standard()).unwrap(),
-            ),
+            data: STANDARD_NO_PAD.encode(encode_decoded_for_test(&corrupt)),
         };
         assert!(decoder.decode(bad).is_err());
         let ServerMessage::PaneSurface(decoded) = decoder.decode(update.clone()).unwrap() else {

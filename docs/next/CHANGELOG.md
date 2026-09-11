@@ -127,8 +127,6 @@
 ## [0.8.2] - 2026-08-19
 
 ### Added
-- Named tabs now show their number as a chip in the desktop tab row, so the `prefix+<n>` switch key stays visible after a tab is renamed. Control it with `ui.tab_numbers = "auto" | "always" | "never"`.
-- Added `[theme.tabs]` to color the desktop tab row's bar, chip, and tab body separately for active and inactive tabs, so the tab row can be matched to an existing tmux status line. Unset elements keep following the selected theme.
 - CLI help now points coding agents to Herdr's plain-text guide, documentation index, and built-in control skill.
 - Added Qwen Code detection for idle, working, and user-confirmation states, plus optional native session restore. (#2730, #2743)
 - Herdr now keeps the outer terminal window title in sync with the session through `ui.window_title`, so window managers and terminal tab bars show the active workspace and the host the panes actually run on. (#2627, thanks @dhh)
@@ -146,7 +144,6 @@
 - The plugin marketplace now discovers valid manifests at repository roots and subdirectories, groups multiple plugins under each repository, and publishes their versions and exact default-branch commits.
 
 ### Changed
-- The client/server wire protocol is now version 21, carrying the per-cell underline color. Client and server must both be updated together; a mismatched pair is refused at the handshake instead of rendering incorrectly.
 - Windows support is now generally available through stable releases and uses the stable update channel by default. Existing preview installs stay on preview until explicitly switched.
 - Headless servers now use a configurable 120×40 virtual terminal instead of 80×24 when no client is attached, giving newly created panes a practical default size. (#2828)
 - Desktop tab labels are now centered in their tabs, so the active-tab highlight has symmetric padding. (#2570, thanks @dhh)
@@ -164,8 +161,6 @@
 - On Unix, Ctrl-click URL openers are now reaped after they exit, preventing defunct child processes from accumulating on long-running servers. (#2903)
 - Windows updates now reuse only verified local packages, avoiding security-tool download blocks while preserving checksum validation. (#2751, #2816, thanks @Pimpmuckl)
 - Herdr no longer sends the full OSC 4 palette query burst under WSL, preventing reply fragments from leaking into the shell through ConPTY. (#2440)
-- Neovim now emits undercurl inside panes again: Herdr answers the DECRQSS SGR query Neovim uses to detect extended underline support, instead of leaving it unanswered and falling back to a plain underline. (#1178)
-- Underline colors set with SGR 58 now reach the host terminal, so colored undercurls and diagnostic underlines keep their own color instead of following the text foreground. (#1169, #1252)
 - Qwen Code panes now use locale-independent terminal-title states and localized confirmation fallbacks, preventing active or blocked turns from appearing idle. (#2756)
 - Claude Code panes now recognize and strip every half-circle title spinner frame, preventing active turns from appearing idle and keeping titles clean. (#2707, #2709, #2760, #2762)
 - Copilot prompts now focus the target pane before sending input, so background panes do not silently drop prompts. (#1698, #2734, thanks @xkrogen)
