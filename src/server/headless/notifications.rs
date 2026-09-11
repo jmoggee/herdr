@@ -338,6 +338,23 @@ impl HeadlessServer {
                 self.send_to_foreground_client(ServerMessage::Clipboard { data });
                 false
             }
+            AppEvent::ForegroundCommandChanged { pane_id, .. } => {
+                let updates_outer_title = self
+                    .foreground_window_title_target()
+                    .or_else(|| self.default_shell_target())
+                    .is_some_and(|target| {
+                        self.app.window_title_uses_foreground_command_for_target(
+                            *pane_id,
+                            target.workspace_index,
+                            target.tab_index,
+                        )
+                    });
+                let changed = self.app.handle_internal_event_with_render_impact(ev);
+                if updates_outer_title {
+                    self.sync_window_title();
+                }
+                changed
+            }
             AppEvent::StateChanged { pane_id, agent, .. } => {
                 // Capture toast before handling.
                 let toast_before = self.app.state.toast.clone();

@@ -179,7 +179,6 @@ fn saving_rename_makes_the_current_automatic_name_static() {
     state.overlay = Some(ClientShellOverlay::Rename(ClientRenameOverlay {
         title: "rename tab",
         input: "editor".into(),
-        replace_on_type: false,
         target: ClientRenameTarget::Tab {
             tab_id: "tab_1".into(),
         },
@@ -205,8 +204,7 @@ fn saving_empty_tab_rename_restores_automatic_name() {
     state.set_snapshot(Box::new(snapshot()));
     state.overlay = Some(ClientShellOverlay::Rename(ClientRenameOverlay {
         title: "rename tab",
-        input: String::new(),
-        replace_on_type: false,
+        input: TextEditor::default(),
         target: ClientRenameTarget::Tab {
             tab_id: "tab_1".into(),
         },

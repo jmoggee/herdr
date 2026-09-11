@@ -1,6 +1,43 @@
 use super::*;
 
 #[test]
+fn themed_tab_bar_paints_number_body_and_surrounding_bar() {
+    let config: Config = toml::from_str(
+        r##"
+[theme.tabs]
+bar_bg = "#010203"
+active_bg = "#040506"
+active_number_bg = "#070809"
+"##,
+    )
+    .unwrap();
+    let mut snapshot = snapshot();
+    snapshot.tabs[0].number = 99;
+    snapshot.tabs[0].label = "named".into();
+    snapshot.tabs[0].custom_label = true;
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&config));
+    state.set_snapshot(Box::new(snapshot));
+    state.set_pane_surface(surface());
+
+    let frame = state.compose(106, 20).expect("composed frame");
+    let buffer = frame.to_ratatui_buffer().expect("ratatui buffer");
+    let tab = state.hits.tabs[0].0;
+
+    assert_eq!(
+        buffer.cell((tab.x, tab.y)).unwrap().bg,
+        ratatui::style::Color::Rgb(0x07, 0x08, 0x09)
+    );
+    assert_eq!(
+        buffer.cell((tab.right() - 1, tab.y)).unwrap().bg,
+        ratatui::style::Color::Rgb(0x04, 0x05, 0x06)
+    );
+    assert_eq!(
+        buffer.cell((tab.right(), tab.y)).unwrap().bg,
+        ratatui::style::Color::Rgb(0x01, 0x02, 0x03)
+    );
+}
+
+#[test]
 fn tab_overflow_controls_scroll_the_client_owned_tab_bar() {
     let mut snapshot = snapshot();
     snapshot.tabs.extend((2..=8).map(|number| ClientShellTab {
