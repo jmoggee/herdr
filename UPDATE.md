@@ -5,24 +5,31 @@ implementation commits on top of `herdrdev/herdr`, plus companion commits that
 only maintain documentation. This file tells an agent what they are, why they
 exist, and what to verify after rebasing onto a newer upstream.
 
-The latest comparison is against upstream `e7e3dfa6` on 2026-09-17. Upstream
+The latest comparison is against upstream `da6bcd59` on 2026-09-18. Upstream
 still lacks a complete equivalent for every behavior below, so the fork cannot
 yet be retired. Upstream remains on private protocol 22; the fork remains on 23
 because its `CellData` wire layout still carries underline color.
 
-Since the previous comparison, upstream released 0.9.1, added forced removal
-for worktrees containing submodules, respected OpenCode `tui.json`
-registrations, cached saved-machine connection metadata, and fixed three
-Windows terminal-input restoration paths around mouse refresh, setup failure,
-and reader replacement. It also replaced the release pipeline with promotion
-from protected previews and published the matching stable documentation. These
-changes do not overlap the fork's seven behaviors. The partial equivalents and
-integration points found in the prior comparison remain: automatic names use
-upstream's client-specific title target and bounded process scan; tab chips use
-upstream's full-tab scroll limit and readable inactive styling; rename overlays
-use upstream's `TextEditor`; and underline colors preserve the frozen
-`endpoint.surface-delta.v1` layout by falling back to a full protocol-23 frame
-when a delta would otherwise discard SGR 58.
+Since the previous comparison, upstream concentrated on Windows input and shell
+startup. It temporarily restored Win32 input as the default, added a local
+input-qualification gauntlet, and now preserves both mouse capture and pixel
+mouse transitions while the client refreshes terminal modes. Unset
+`terminal.default_shell` now prefers a `pwsh.exe` found on `PATH`, but only after
+validating its complete PE shape and compatibility with the native host
+architecture reported by `IsWow64Process2`; it still falls back to Windows
+PowerShell. Upstream also made the legacy config-backup DACL fixture explicit
+and skips symlink-dependent tests when Windows denies symlink privilege. These
+changes do not implement any of the fork's seven behaviors. The fork's Windows
+command-label selection remains adjacent to, but distinct from, upstream's new
+default-shell selection: it reports the foreground process after launch rather
+than choosing or validating the shell executable.
+
+The partial equivalents and integration points found in earlier comparisons
+remain: automatic names use upstream's client-specific title target and bounded
+process scan; tab chips use upstream's full-tab scroll limit and readable
+inactive styling; rename overlays use upstream's `TextEditor`; and underline
+colors preserve the frozen `endpoint.surface-delta.v1` layout by falling back to
+a full protocol-23 frame when a delta would otherwise discard SGR 58.
 
 `master` here is the integration branch. Upstream is `origin`; the fork is
 `fork`. Never push to `origin` — the authenticated account is not a maintainer
@@ -51,13 +58,10 @@ catastrophically broken or slow, check this before investigating anything else.
 ## Current pristine comparison
 
 The full, non-fail-fast suite was compared against a detached pristine worktree
-at exact upstream `e7e3dfa6` on 2026-09-17. The fork ran 3,684 tests: 3,634
-passed, 50 failed, and six were skipped. Pristine upstream ran 3,656 tests:
-3,605 passed, 51 failed, and six were skipped. Every fork failure also failed in
-pristine upstream. Pristine alone failed
-`federated_client_starts_without_local_and_survives_its_restart`, an
-intermittent client restart test that did not fail in the fork run. There were
-no fork-only failures.
+at exact upstream `da6bcd59` on 2026-09-18. The fork ran 3,690 tests: 3,640
+passed, 50 failed, and six were skipped. Pristine upstream ran 3,662 tests:
+3,612 passed, 50 failed, and six were skipped. The sorted failing test names
+were identical, so there were no fork-only or pristine-only failures.
 
 The shared failures are environmental on this machine: process/cwd discovery,
 git worktree setup, clipboard access, PTY spawning, headless shell startup,
@@ -111,14 +115,15 @@ Windows lint, and docs recipes separately so that baseline failure does not hide
 their results. If a later run fails elsewhere, compare that exact command in the
 pristine worktree rather than assuming this snapshot still applies.
 
-### Validation at `e7e3dfa6`
+### Validation at `da6bcd59`
 
 - `cargo fmt --check`, Clippy with warnings denied, the six UI hot-path
-  architecture tests, the generated API schema check, and 18 focused wire,
-  surface-delta, tab-render, automatic-name, and DECRQSS regressions passed.
+  architecture tests, the generated API schema check from the full suite, and
+  18 focused wire, surface-delta, tab-render, automatic-name, and DECRQSS
+  regressions passed.
 - `just bench-render-scale` passed. At 15 panes the combined render pipeline was
-  1.02× the one-pane median for background workspaces and 1.11× for active panes;
-  client-shell composition was 1.06× and 0.95× respectively. The benchmark also
+  1.01× the one-pane median for background workspaces and 1.13× for active panes;
+  client-shell composition was 1.05× and 0.97× respectively. The benchmark also
   exercised upstream's surface reuse and delta paths with 1 and 15 panes.
 - `just check` stopped on the same two `api_ping` cwd failures in both trees. The
   complete non-fail-fast comparison above establishes that the remaining suite
@@ -129,16 +134,16 @@ pristine worktree rather than assuming this snapshot still applies.
   start because this machine has no Windows SDK/Zig libc configuration. These are
   toolchain baselines, not fork exceptions, and must be rechecked from scratch on
   the next sync.
-- Live checks used the checkout's `herdr 0.9.1` binary in disposable named session
-  `fork-sync-20260917-071631`. This maintenance shell was not attached to a parent
-  Herdr session, so the checkout TUI ran directly in a dedicated PTY instead of an
-  outer Herdr pane. A direct pane probe and Neovim 0.13 nightly both rendered
-  `4:3` plus `58;2;17;34;51`; split panes recorded `TITLE_ONE` and `TITLE_TWO`
-  and the focused label resolved `TITLE_TWO`; after focusing the first pane, a
-  custom `FROZEN` name stayed fixed through `TITLE_THREE` until an empty API
-  rename restored `TITLE_THREE`; command mode moved `fish` → `sleep` → `fish`;
-  and returning to title mode restored `TITLE_FOUR`. The named session,
-  temporary config, PTY, and reproduction directory were removed afterward.
+- Live checks used the checkout's `herdr 0.9.1` binary in disposable named
+  session `fork-sync-20260918-OZEjrP`. This maintenance shell was not attached
+  to a parent Herdr session, so the checkout TUI ran directly in a dedicated PTY
+  instead of an outer Herdr pane. A direct pane probe and Neovim 0.13 nightly
+  both rendered `4:3` plus `58;2;17;34;51`; split panes recorded `TITLE_ONE` and
+  `TITLE_TWO`, and the focused label resolved `TITLE_TWO`; a custom `FROZEN`
+  name stayed fixed through `TITLE_THREE` until an empty API rename restored
+  `TITLE_THREE`; command mode moved `sleep` → `fish` → `sleep`; and returning to
+  title mode restored `TITLE_FOUR`. The named session, temporary config, PTY,
+  and reproduction directory were removed afterward.
 
 ## Implementation changes
 
