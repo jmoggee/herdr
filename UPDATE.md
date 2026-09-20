@@ -5,24 +5,21 @@ implementation commits on top of `herdrdev/herdr`, plus companion commits that
 only maintain documentation. This file tells an agent what they are, why they
 exist, and what to verify after rebasing onto a newer upstream.
 
-The latest comparison is against upstream `da6bcd59` on 2026-09-18. Upstream
+The latest comparison is against upstream `d59d0603` on 2026-09-20. Upstream
 still lacks a complete equivalent for every behavior below, so the fork cannot
 yet be retired. Upstream remains on private protocol 22; the fork remains on 23
 because its `CellData` wire layout still carries underline color.
 
-Since the previous comparison, upstream concentrated on Windows input and shell
-startup. It temporarily restored Win32 input as the default, added a local
-input-qualification gauntlet, and now preserves both mouse capture and pixel
-mouse transitions while the client refreshes terminal modes. Unset
-`terminal.default_shell` now prefers a `pwsh.exe` found on `PATH`, but only after
-validating its complete PE shape and compatibility with the native host
-architecture reported by `IsWow64Process2`; it still falls back to Windows
-PowerShell. Upstream also made the legacy config-backup DACL fixture explicit
-and skips symlink-dependent tests when Windows denies symlink privilege. These
-changes do not implement any of the fork's seven behaviors. The fork's Windows
-command-label selection remains adjacent to, but distinct from, upstream's new
-default-shell selection: it reports the foreground process after launch rather
-than choosing or validating the shell executable.
+Since the previous comparison, upstream added synchronized and animated cursor
+redraw recovery, configurable pane screen/scrollback clearing, a go-to picker
+covering every agent and terminal, selected-agent reveal while cycling the
+sidebar, request-ID preservation in socket errors, and SSH compression. It also
+corrected Grok activity detection when OSC signals are customized or disabled,
+and hardened Windows clipboard/input plus integration-asset tests. These changes
+do not implement any of the fork's seven behaviors. The pane-clearing work
+touches the same terminal/runtime surfaces as the fork's DECRQSS handling, and
+the cursor fixes substantially changed `src/pane/terminal.rs`, but the rebased
+fork retains only its query-boundary augmentation there.
 
 The partial equivalents and integration points found in earlier comparisons
 remain: automatic names use upstream's client-specific title target and bounded
@@ -58,9 +55,9 @@ catastrophically broken or slow, check this before investigating anything else.
 ## Current pristine comparison
 
 The full, non-fail-fast suite was compared against a detached pristine worktree
-at exact upstream `da6bcd59` on 2026-09-18. The fork ran 3,690 tests: 3,640
-passed, 50 failed, and six were skipped. Pristine upstream ran 3,662 tests:
-3,612 passed, 50 failed, and six were skipped. The sorted failing test names
+at exact upstream `d59d0603` on 2026-09-20. The fork ran 3,678 tests: 3,628
+passed, 50 failed, and six were skipped. Pristine upstream ran 3,650 tests:
+3,600 passed, 50 failed, and six were skipped. The sorted failing test names
 were identical, so there were no fork-only or pristine-only failures.
 
 The shared failures are environmental on this machine: process/cwd discovery,
@@ -115,15 +112,15 @@ Windows lint, and docs recipes separately so that baseline failure does not hide
 their results. If a later run fails elsewhere, compare that exact command in the
 pristine worktree rather than assuming this snapshot still applies.
 
-### Validation at `da6bcd59`
+### Validation at `d59d0603`
 
 - `cargo fmt --check`, Clippy with warnings denied, the six UI hot-path
   architecture tests, the generated API schema check from the full suite, and
-  18 focused wire, surface-delta, tab-render, automatic-name, and DECRQSS
+  15 focused wire, surface-delta, tab-render, automatic-name, and DECRQSS
   regressions passed.
 - `just bench-render-scale` passed. At 15 panes the combined render pipeline was
-  1.01× the one-pane median for background workspaces and 1.13× for active panes;
-  client-shell composition was 1.05× and 0.97× respectively. The benchmark also
+  1.02× the one-pane median for background workspaces and 1.09× for active panes;
+  client-shell composition was 1.04× and 0.95× respectively. The benchmark also
   exercised upstream's surface reuse and delta paths with 1 and 15 panes.
 - `just check` stopped on the same two `api_ping` cwd failures in both trees. The
   complete non-fail-fast comparison above establishes that the remaining suite
@@ -135,15 +132,16 @@ pristine worktree rather than assuming this snapshot still applies.
   toolchain baselines, not fork exceptions, and must be rechecked from scratch on
   the next sync.
 - Live checks used the checkout's `herdr 0.9.1` binary in disposable named
-  session `fork-sync-20260918-OZEjrP`. This maintenance shell was not attached
+  session `fork-sync-20260920`. This maintenance shell was not attached
   to a parent Herdr session, so the checkout TUI ran directly in a dedicated PTY
-  instead of an outer Herdr pane. A direct pane probe and Neovim 0.13 nightly
-  both rendered `4:3` plus `58;2;17;34;51`; split panes recorded `TITLE_ONE` and
-  `TITLE_TWO`, and the focused label resolved `TITLE_TWO`; a custom `FROZEN`
-  name stayed fixed through `TITLE_THREE` until an empty API rename restored
-  `TITLE_THREE`; command mode moved `sleep` → `fish` → `sleep`; and returning to
-  title mode restored `TITLE_FOUR`. The named session, temporary config, PTY,
-  and reproduction directory were removed afterward.
+  instead of an outer Herdr pane. A direct pane probe rendered `4:3` plus
+  `58;2;17;34;51` and received a DECRQSS reply echoing both attributes. Split
+  panes recorded `TITLE_ONE` and `TITLE_TWO`, and the focused label followed the
+  second pane; a custom `FROZEN` name stayed fixed until an empty API rename
+  restored automatic naming. Command mode resolved the focused `python3`
+  process, and returning to title mode did not retain that cached command. The
+  named session, temporary config, PTY, and reproduction directory were removed
+  afterward.
 
 ## Implementation changes
 
