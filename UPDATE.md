@@ -5,21 +5,24 @@ implementation commits on top of `herdrdev/herdr`, plus companion commits that
 only maintain documentation. This file tells an agent what they are, why they
 exist, and what to verify after rebasing onto a newer upstream.
 
-The latest comparison is against upstream `d59d0603` on 2026-09-20. Upstream
+The latest comparison is against upstream `5a649142` on 2026-09-21. Upstream
 still lacks a complete equivalent for every behavior below, so the fork cannot
 yet be retired. Upstream remains on private protocol 22; the fork remains on 23
 because its `CellData` wire layout still carries underline color.
 
-Since the previous comparison, upstream added synchronized and animated cursor
-redraw recovery, configurable pane screen/scrollback clearing, a go-to picker
-covering every agent and terminal, selected-agent reveal while cycling the
-sidebar, request-ID preservation in socket errors, and SSH compression. It also
-corrected Grok activity detection when OSC signals are customized or disabled,
-and hardened Windows clipboard/input plus integration-asset tests. These changes
-do not implement any of the fork's seven behaviors. The pane-clearing work
-touches the same terminal/runtime surfaces as the fork's DECRQSS handling, and
-the cursor fixes substantially changed `src/pane/terminal.rs`, but the rebased
-fork retains only its query-boundary augmentation there.
+Since the previous comparison, upstream improved Kiro and Codex status
+detection, preserved delayed mouse reports once keyboard input confirms the
+terminal protocol, kept workspace navigation visible in terminal-derived
+themes, retained explicit worktree workspace membership, drained bursty event
+subscriptions with explicit history-loss reporting, rejected terminal-less
+attach before starting a session, confirmed closing the final TUI tab, and
+preserved session layouts across shutdown and restore failures. It also indexed
+Navigator tabs and panes per endpoint instead of repeatedly scanning the whole
+snapshot. The Navigator optimization touches a projection of automatic tab
+labels but leaves label ownership and contents unchanged. None of these changes
+implements any of the fork's seven behaviors. All seven equivalence assessments
+below were rechecked against the final upstream tree rather than carried forward
+as a historical allowlist.
 
 The partial equivalents and integration points found in earlier comparisons
 remain: automatic names use upstream's client-specific title target and bounded
@@ -55,9 +58,9 @@ catastrophically broken or slow, check this before investigating anything else.
 ## Current pristine comparison
 
 The full, non-fail-fast suite was compared against a detached pristine worktree
-at exact upstream `d59d0603` on 2026-09-20. The fork ran 3,678 tests: 3,628
-passed, 50 failed, and six were skipped. Pristine upstream ran 3,650 tests:
-3,600 passed, 50 failed, and six were skipped. The sorted failing test names
+at exact upstream `5a649142` on 2026-09-21. The fork ran 3,727 tests: 3,677
+passed, 50 failed, and eight were skipped. Pristine upstream ran 3,699 tests:
+3,649 passed, 50 failed, and eight were skipped. The sorted failing test names
 were identical, so there were no fork-only or pristine-only failures.
 
 The shared failures are environmental on this machine: process/cwd discovery,
@@ -112,36 +115,36 @@ Windows lint, and docs recipes separately so that baseline failure does not hide
 their results. If a later run fails elsewhere, compare that exact command in the
 pristine worktree rather than assuming this snapshot still applies.
 
-### Validation at `d59d0603`
+### Validation at `5a649142`
 
 - `cargo fmt --check`, Clippy with warnings denied, the six UI hot-path
   architecture tests, the generated API schema check from the full suite, and
   15 focused wire, surface-delta, tab-render, automatic-name, and DECRQSS
   regressions passed.
 - `just bench-render-scale` passed. At 15 panes the combined render pipeline was
-  1.02× the one-pane median for background workspaces and 1.09× for active panes;
-  client-shell composition was 1.04× and 0.95× respectively. The benchmark also
+  1.03× the one-pane median for background workspaces and 1.07× for active panes;
+  client-shell composition was 1.06× and 0.93× respectively. The benchmark also
   exercised upstream's surface reuse and delta paths with 1 and 15 panes.
 - `just check` stopped on the same two `api_ping` cwd failures in both trees. The
   complete non-fail-fast comparison above establishes that the remaining suite
   has no fork-only failure.
-- `just maintenance-test` had the same single missing-`openssl` host failure in
-  both trees. `just integration-assets-test` and `just docs-contract-test` could
-  not start in either tree because `bun` is absent; `just windows-lint` could not
-  start because this machine has no Windows SDK/Zig libc configuration. These are
-  toolchain baselines, not fork exceptions, and must be rechecked from scratch on
-  the next sync.
+- `just maintenance-test` ran 144 tests and had the same single
+  missing-`openssl` host failure in both trees. `just integration-assets-test`
+  and `just docs-contract-test` could not start in either tree because `bun` is
+  absent; `just windows-lint` could not start in either tree because this machine
+  has no Windows SDK/Zig libc configuration. These are toolchain baselines, not
+  fork exceptions, and must be rechecked from scratch on the next sync.
 - Live checks used the checkout's `herdr 0.9.1` binary in disposable named
-  session `fork-sync-20260920`. This maintenance shell was not attached
+  session `fork-sync-20260921-0718`. This maintenance shell was not attached
   to a parent Herdr session, so the checkout TUI ran directly in a dedicated PTY
   instead of an outer Herdr pane. A direct pane probe rendered `4:3` plus
   `58;2;17;34;51` and received a DECRQSS reply echoing both attributes. Split
   panes recorded `TITLE_ONE` and `TITLE_TWO`, and the focused label followed the
   second pane; a custom `FROZEN` name stayed fixed until an empty API rename
-  restored automatic naming. Command mode resolved the focused `python3`
-  process, and returning to title mode did not retain that cached command. The
-  named session, temporary config, PTY, and reproduction directory were removed
-  afterward.
+  restored automatic naming. Command mode transitioned `fish` → `sleep` →
+  `fish`, and returning to title mode produced `TITLE_BACK` without retaining
+  the cached command. The named session, temporary config, PTY, and reproduction
+  directory were removed afterward.
 
 ## Implementation changes
 
