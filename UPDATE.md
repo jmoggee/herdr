@@ -5,24 +5,21 @@ implementation commits on top of `herdrdev/herdr`, plus companion commits that
 only maintain documentation. This file tells an agent what they are, why they
 exist, and what to verify after rebasing onto a newer upstream.
 
-The latest comparison is against upstream `5a649142` on 2026-09-21. Upstream
+The latest comparison is against upstream `8ac95427` on 2026-09-22. Upstream
 still lacks a complete equivalent for every behavior below, so the fork cannot
 yet be retired. Upstream remains on private protocol 22; the fork remains on 23
 because its `CellData` wire layout still carries underline color.
 
-Since the previous comparison, upstream improved Kiro and Codex status
-detection, preserved delayed mouse reports once keyboard input confirms the
-terminal protocol, kept workspace navigation visible in terminal-derived
-themes, retained explicit worktree workspace membership, drained bursty event
-subscriptions with explicit history-loss reporting, rejected terminal-less
-attach before starting a session, confirmed closing the final TUI tab, and
-preserved session layouts across shutdown and restore failures. It also indexed
-Navigator tabs and panes per endpoint instead of repeatedly scanning the whole
-snapshot. The Navigator optimization touches a projection of automatic tab
-labels but leaves label ownership and contents unchanged. None of these changes
-implements any of the fork's seven behaviors. All seven equivalence assessments
-below were rechecked against the final upstream tree rather than carried forward
-as a historical allowlist.
+Since the previous comparison, upstream refreshes forwarded SSH-agent state
+after reconnect, passes Droid's ED3 scrollback clears through to the terminal
+parser instead of filtering them, distinguishes completed agent work from
+startup and session replacement, and scrubs inherited terminal-multiplexer and
+agent-session identity from new panes. The Droid change removes a byte-filtering
+layer beside the fork's DECRQSS tracker; the rebased tracker now observes the
+same original bytes as upstream's other terminal trackers. None of these
+changes implements any of the fork's seven behaviors. All seven equivalence
+assessments below were rechecked against the final upstream tree rather than
+carried forward as a historical allowlist.
 
 The partial equivalents and integration points found in earlier comparisons
 remain: automatic names use upstream's client-specific title target and bounded
@@ -58,10 +55,13 @@ catastrophically broken or slow, check this before investigating anything else.
 ## Current pristine comparison
 
 The full, non-fail-fast suite was compared against a detached pristine worktree
-at exact upstream `5a649142` on 2026-09-21. The fork ran 3,727 tests: 3,677
-passed, 50 failed, and eight were skipped. Pristine upstream ran 3,699 tests:
-3,649 passed, 50 failed, and eight were skipped. The sorted failing test names
-were identical, so there were no fork-only or pristine-only failures.
+at exact upstream `8ac95427` on 2026-09-22. The final fork run executed 3,755
+tests: 3,704 passed, 51 failed, and eight were skipped. Pristine upstream ran
+3,727 tests: 3,676 passed, 51 failed, and eight were skipped. The sorted failing
+test names were identical, so there were no fork-only or pristine-only failures.
+An earlier fork run additionally timed out in
+`federated_client_starts_without_local_and_survives_its_restart`; it passed in
+isolation and on the complete rerun, so it is not part of the baseline.
 
 The shared failures are environmental on this machine: process/cwd discovery,
 git worktree setup, clipboard access, PTY spawning, headless shell startup,
@@ -71,7 +71,7 @@ surface, the identical failures were:
 ```
 api_ping::*cwd*                                              (2)
 cli::cases::agents::agent_start_*                            (3)
-machine_api::*                                               (14)
+machine_api::*                                               (15)
 machine_setup::*                                             (5)
 remote_attach::ssh_check_message_is_visible_while_authentication_waits (1)
 app::api::layouts::tests::*                                  (3)
@@ -82,6 +82,7 @@ app::api::worktrees::tests::*                                (7)
 app::tests::{pane_exit_checkpoint_*,pane_split_request_*}     (4)
 live_handoff::live_handoff_keeps_unmanaged_agent_name_*       (1)
 detect::tests::foreground_job_detects_agent_behind_shell_*    (1)
+pane::terminal::migration_tests::*ed3_for_droid*              (1)
 platform::linux::tests::failed_wl_copy_uses_x11_fallback      (1)
 pty::backend::unix::tests::portable_pty_setup_*               (1)
 server::headless::tests::*                                    (2)
@@ -115,15 +116,15 @@ Windows lint, and docs recipes separately so that baseline failure does not hide
 their results. If a later run fails elsewhere, compare that exact command in the
 pristine worktree rather than assuming this snapshot still applies.
 
-### Validation at `5a649142`
+### Validation at `8ac95427`
 
 - `cargo fmt --check`, Clippy with warnings denied, the six UI hot-path
   architecture tests, the generated API schema check from the full suite, and
   15 focused wire, surface-delta, tab-render, automatic-name, and DECRQSS
   regressions passed.
 - `just bench-render-scale` passed. At 15 panes the combined render pipeline was
-  1.03× the one-pane median for background workspaces and 1.07× for active panes;
-  client-shell composition was 1.06× and 0.93× respectively. The benchmark also
+  1.00× the one-pane median for background workspaces and 1.12× for active panes;
+  client-shell composition was 1.03× and 0.96× respectively. The benchmark also
   exercised upstream's surface reuse and delta paths with 1 and 15 panes.
 - `just check` stopped on the same two `api_ping` cwd failures in both trees. The
   complete non-fail-fast comparison above establishes that the remaining suite
@@ -134,17 +135,18 @@ pristine worktree rather than assuming this snapshot still applies.
   absent; `just windows-lint` could not start in either tree because this machine
   has no Windows SDK/Zig libc configuration. These are toolchain baselines, not
   fork exceptions, and must be rechecked from scratch on the next sync.
-- Live checks used the checkout's `herdr 0.9.1` binary in disposable named
-  session `fork-sync-20260921-0718`. This maintenance shell was not attached
+- Live checks used the checkout's `herdr 0.9.1` binary and Neovim
+  `0.13.0-nightly+0ea627c` in disposable named session
+  `fork-sync-20260922-z4KaqJ`. This maintenance shell was not attached
   to a parent Herdr session, so the checkout TUI ran directly in a dedicated PTY
   instead of an outer Herdr pane. A direct pane probe rendered `4:3` plus
-  `58;2;17;34;51` and received a DECRQSS reply echoing both attributes. Split
-  panes recorded `TITLE_ONE` and `TITLE_TWO`, and the focused label followed the
-  second pane; a custom `FROZEN` name stayed fixed until an empty API rename
-  restored automatic naming. Command mode transitioned `fish` → `sleep` →
-  `fish`, and returning to title mode produced `TITLE_BACK` without retaining
-  the cached command. The named session, temporary config, PTY, and reproduction
-  directory were removed afterward.
+  `58;2;17;34;51`; Neovim's real undercurl probe rendered the same attributes.
+  Split panes recorded `TITLE_ONE` and `TITLE_TWO`, and the focused label followed
+  the second pane; a custom `FROZEN` name stayed fixed through `TITLE_THREE` until
+  an empty API rename restored automatic naming. Command mode transitioned
+  `fish` → `sleep` → `fish`, and returning to title mode produced `TITLE_BACK`
+  without retaining the cached command. The named session, temporary config,
+  PTY, and reproduction directory were removed afterward.
 
 ## Implementation changes
 
@@ -235,7 +237,8 @@ active SGR 58 underline color. This fork keeps the complete style query.
 - `src/pane/terminal.rs` — the ordered response stream writes through each query,
   drains libghostty's native reply, reads the live cursor style at that boundary,
   and inserts `58:5:n` or `58:2::r:g:b` when libghostty has not already supplied
-  one.
+  one. It observes upstream's original, unfiltered PTY bytes after the Droid ED3
+  compatibility filter was removed.
 
 Regression tests: the `pane::decrqss` tests pin query boundaries, split writes,
 eight-bit controls, and false-positive avoidance.
