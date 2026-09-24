@@ -5,26 +5,23 @@ implementation commits on top of `herdrdev/herdr`, plus companion commits that
 only maintain documentation. This file tells an agent what they are, why they
 exist, and what to verify after rebasing onto a newer upstream.
 
-The latest comparison is against upstream `23479dd1` on 2026-09-23. Upstream
+The latest comparison is against upstream `9c96f7dd` on 2026-09-24. Upstream
 still lacks a complete equivalent for every behavior below, so the fork cannot
 yet be retired. Upstream remains on private protocol 22; the fork remains on 23
 because its `CellData` wire layout still carries underline color.
 
-Since the previous comparison, upstream staggers restored-agent launches,
-tracks OpenCode subagent status per pane, preserves hook-owned agent status
-across live handoff, recognizes Codex mention-completion popups, reuses SSH
-authentication while adding machine-recovery commands, moves worktree discovery
-off the app thread, recognizes more Windows daemon and npm-installed executable
-cases, keeps synchronized-output pane frames atomic, and rejects non-text
-Windows key events before they can trigger the space prefix. The fork's
-foreground-command event now shares the app event dispatcher with upstream's
-async worktree result, and its DECRQSS augmentation runs inside upstream's
-synchronized-output epoch guard. The Windows daemon change does not alter the
-foreground-job selection used by command-based names, and atomic frames do not
-carry underline color across the pane/client boundary. None of these changes
-implements any of the fork's seven behaviors. All seven equivalence assessments
-below were rechecked against the final upstream tree rather than carried forward
-as a historical allowlist.
+Since the previous comparison, upstream captures richer native Windows console
+input records in its test harness, waits for complete PID markers in live
+handoff tests, stabilizes cursor visibility and position across brief redraw
+hides and resize races, and stops inferring Codex idle from unmatched terminal
+output. Codex startup readiness is now tracked separately from agent state by a
+prompt-observation event. The fork's foreground-command event shares that app
+event dispatcher and the adjacent pane detection task without changing the new
+Codex readiness path. Cursor settling does not transport underline color or
+answer colored DECRQSS queries. None of these changes implements any of the
+fork's seven behaviors. All seven equivalence assessments below were rechecked
+against the final upstream tree rather than carried forward as a historical
+allowlist.
 
 The partial equivalents and integration points found in earlier comparisons
 remain: automatic names use upstream's client-specific title target and bounded
@@ -60,14 +57,14 @@ catastrophically broken or slow, check this before investigating anything else.
 ## Current pristine comparison
 
 The full, non-fail-fast suite was compared against a detached pristine worktree
-at exact upstream `23479dd1` on 2026-09-23. The fork ran 3,779 tests: 3,717
-passed, 62 failed, and eight were skipped. Pristine upstream ran 3,751 tests:
-3,687 passed, 64 failed, and eight were skipped. Every fork failure also occurred
+at exact upstream `9c96f7dd` on 2026-09-24. The fork ran 3,787 tests: 3,725
+passed, 62 failed, and eight were skipped. Pristine upstream ran 3,759 tests:
+3,695 passed, 64 failed, and eight were skipped. Every fork failure also occurred
 in pristine upstream, so there were no fork-only failures. Pristine alone failed
-`detect::tests::foreground_job_detects_shell_running_command` and
-`federated_client_starts_without_local_and_survives_its_restart`; the fork's
-corresponding tests passed. The client-mode, cross-area, and multi-client wire
-canaries all passed in the fork.
+`live_handoff_preserves_http_servers_across_multiple_sessions` and
+`live_handoff_preserves_python_http_server`; the fork's corresponding tests
+passed. The client-mode, cross-area, and multi-client wire canaries all passed in
+the fork.
 
 The shared failures are environmental on this machine: process/cwd discovery,
 git worktree setup, clipboard access, PTY spawning, headless shell startup,
@@ -123,15 +120,15 @@ Windows lint, and docs recipes separately so that baseline failure does not hide
 their results. If a later run fails elsewhere, compare that exact command in the
 pristine worktree rather than assuming this snapshot still applies.
 
-### Validation at `23479dd1`
+### Validation at `9c96f7dd`
 
 - `cargo fmt --check`, Clippy with warnings denied, the six UI hot-path
   architecture tests, the generated API schema check from the full suite, and
   17 focused wire, surface-delta, tab-render, automatic-name, and DECRQSS
   regressions passed.
 - `just bench-render-scale` passed. At 15 panes the combined render pipeline was
-  1.02× the one-pane median for background workspaces and 1.13× for active panes;
-  client-shell composition was 1.05× and 0.96× respectively. The benchmark also
+  1.02× the one-pane median for background workspaces and 1.12× for active panes;
+  client-shell composition was 1.04× and 0.95× respectively. The benchmark also
   exercised upstream's surface reuse and delta paths with 1 and 15 panes.
 - `just check` stopped on the same two `api_ping` cwd failures in both trees. The
   complete non-fail-fast comparison above establishes that the remaining suite
@@ -144,7 +141,7 @@ pristine worktree rather than assuming this snapshot still applies.
   fork exceptions, and must be rechecked from scratch on the next sync.
 - Live checks used the checkout's `herdr 0.9.1` binary and Neovim
   `0.13.0-nightly+51d7d99` in disposable named session
-  `fork-sync-20260923-FXmbTw`. This maintenance shell was not attached
+  `fork-sync-20260924-N6BBzf`. This maintenance shell was not attached
   to a parent Herdr session, so the checkout TUI ran directly in a dedicated PTY
   instead of an outer Herdr pane. A direct pane probe rendered `4:3` plus
   `58;2;17;34;51`; Neovim's real undercurl probe rendered the same attributes.
