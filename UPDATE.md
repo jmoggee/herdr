@@ -5,23 +5,24 @@ implementation commits on top of `herdrdev/herdr`, plus companion commits that
 only maintain documentation. This file tells an agent what they are, why they
 exist, and what to verify after rebasing onto a newer upstream.
 
-The latest comparison is against upstream `9c96f7dd` on 2026-09-24. Upstream
+The latest comparison is against upstream `8d95e9bd` on 2026-09-25. Upstream
 still lacks a complete equivalent for every behavior below, so the fork cannot
 yet be retired. Upstream remains on private protocol 22; the fork remains on 23
 because its `CellData` wire layout still carries underline color.
 
-Since the previous comparison, upstream captures richer native Windows console
-input records in its test harness, waits for complete PID markers in live
-handoff tests, stabilizes cursor visibility and position across brief redraw
-hides and resize races, and stops inferring Codex idle from unmatched terminal
-output. Codex startup readiness is now tracked separately from agent state by a
-prompt-observation event. The fork's foreground-command event shares that app
-event dispatcher and the adjacent pane detection task without changing the new
-Codex readiness path. Cursor settling does not transport underline color or
-answer colored DECRQSS queries. None of these changes implements any of the
-fork's seven behaviors. All seven equivalence assessments below were rechecked
-against the final upstream tree rather than carried forward as a historical
-allowlist.
+Since the previous comparison, upstream replaced its custom pane-graphics API
+with server-owned native Kitty image rendering and source retention, while
+keeping the stable endpoint generation at 1 and the private protocol at 22. It
+also avoids rebuilding identical ANSI SGR sequences, avoids repeated scrollback
+page lookups, keeps copy mode active through projection updates, matches
+Navigator search terms independently, strengthens Win32 and Kitty input
+qualification, and documents the tmux auto-attach guard. The fork's ANSI style
+cache now includes underline color, preserving upstream's encoding optimization
+without treating color-only undercurl changes as identical. The graphics,
+scrollback, copy-mode, Navigator, Windows-input, and documentation changes do not
+implement any of the fork's seven behaviors. All seven equivalence assessments
+below were rechecked against the final upstream tree rather than carried forward
+as a historical allowlist.
 
 The partial equivalents and integration points found in earlier comparisons
 remain: automatic names use upstream's client-specific title target and bounded
@@ -57,14 +58,13 @@ catastrophically broken or slow, check this before investigating anything else.
 ## Current pristine comparison
 
 The full, non-fail-fast suite was compared against a detached pristine worktree
-at exact upstream `9c96f7dd` on 2026-09-24. The fork ran 3,787 tests: 3,725
-passed, 62 failed, and eight were skipped. Pristine upstream ran 3,759 tests:
-3,695 passed, 64 failed, and eight were skipped. Every fork failure also occurred
+at exact upstream `8d95e9bd` on 2026-09-25. The fork ran 3,826 tests: 3,764
+passed, 62 failed, and ten were skipped. Pristine upstream ran 3,798 tests:
+3,735 passed, 63 failed, and ten were skipped. Every fork failure also occurred
 in pristine upstream, so there were no fork-only failures. Pristine alone failed
-`live_handoff_preserves_http_servers_across_multiple_sessions` and
-`live_handoff_preserves_python_http_server`; the fork's corresponding tests
-passed. The client-mode, cross-area, and multi-client wire canaries all passed in
-the fork.
+`federated_client_starts_without_local_and_survives_its_restart`; the fork's
+corresponding test passed. The client-mode, cross-area, and multi-client wire
+canaries all passed in the fork.
 
 The shared failures are environmental on this machine: process/cwd discovery,
 git worktree setup, clipboard access, PTY spawning, headless shell startup,
@@ -120,37 +120,33 @@ Windows lint, and docs recipes separately so that baseline failure does not hide
 their results. If a later run fails elsewhere, compare that exact command in the
 pristine worktree rather than assuming this snapshot still applies.
 
-### Validation at `9c96f7dd`
+### Validation at `8d95e9bd`
 
 - `cargo fmt --check`, Clippy with warnings denied, the six UI hot-path
   architecture tests, the generated API schema check from the full suite, and
-  17 focused wire, surface-delta, tab-render, automatic-name, and DECRQSS
+  19 focused wire, surface-delta, tab-render, automatic-name, and DECRQSS
   regressions passed.
 - `just bench-render-scale` passed. At 15 panes the combined render pipeline was
-  1.02× the one-pane median for background workspaces and 1.12× for active panes;
-  client-shell composition was 1.04× and 0.95× respectively. The benchmark also
+  1.00× the one-pane median for background workspaces and 1.13× for active panes;
+  client-shell composition was 1.04× and 0.97× respectively. The benchmark also
   exercised upstream's surface reuse and delta paths with 1 and 15 panes.
 - `just check` stopped on the same two `api_ping` cwd failures in both trees. The
   complete non-fail-fast comparison above establishes that the remaining suite
   has no fork-only failure.
-- `just maintenance-test` ran 144 tests and had the same single
+- `just maintenance-test` ran 149 tests and had the same single
   missing-`openssl` host failure in both trees. `just integration-assets-test`
   and `just docs-contract-test` could not start in either tree because `bun` is
   absent; `just windows-lint` could not start in either tree because this machine
   has no Windows SDK/Zig libc configuration. These are toolchain baselines, not
   fork exceptions, and must be rechecked from scratch on the next sync.
-- Live checks used the checkout's `herdr 0.9.1` binary and Neovim
-  `0.13.0-nightly+51d7d99` in disposable named session
-  `fork-sync-20260924-N6BBzf`. This maintenance shell was not attached
-  to a parent Herdr session, so the checkout TUI ran directly in a dedicated PTY
-  instead of an outer Herdr pane. A direct pane probe rendered `4:3` plus
-  `58;2;17;34;51`; Neovim's real undercurl probe rendered the same attributes.
-  Split panes recorded `TITLE_ONE` and `TITLE_TWO`, and the focused label followed
-  the second pane; a custom `FROZEN` name stayed fixed through `TITLE_THREE` until
-  an empty API rename restored automatic naming. Command mode transitioned
-  `fish` → `sleep` → `fish`, and returning to title mode produced `TITLE_BACK`
-  without retaining the cached command. The named session, temporary config,
-  PTY, and reproduction directory were removed afterward.
+- Live checks could not reach an API-ready disposable session on this host.
+  Both the checkout and pristine `herdr 0.9.1` clients timed out waiting for the
+  named-session client socket when launched in dedicated PTYs. The fork server
+  log showed its valid NixOS Bash child exiting immediately with `SIGHUP`; the
+  paired suites also share the `portable_pty_setup_leaves_one_parent_pty_fd`
+  failure and the broader pane-spawn baseline above. No runtime code was changed
+  to accommodate the host. The stopped fork and pristine named sessions,
+  isolated config/state, and reproduction directory were deleted.
 
 ## Implementation changes
 
@@ -163,8 +159,11 @@ colored undercurls rendered in the text foreground color.
   the existing `color_to_u32`. Read in `from_ratatui_cell`, restored in
   `to_ratatui_buffer`.
 - `src/protocol/render_ansi.rs` — `build_sgr` emits `58:2::r:g:b` / `58:5:n`.
-  No `59` is emitted because every cell's SGR opens with a full reset.
-  `cells_visually_equal` compares the field so a color-only change repaints.
+  No `59` is emitted because every emitted cell-style SGR opens with a full
+  reset. `cells_visually_equal` compares the field so a color-only change
+  repaints. Upstream's packed-style cache includes `underline_color` in its key,
+  so it retains the redundant-encoding optimization without hiding color-only
+  changes.
 - `src/pane/terminal.rs` — `cell_data_from_style` carries it too. **There are two
   independent paths**: `from_ratatui_cell` (full-frame) and `cell_data_from_style`
   (dirty-patch). Both need the field; fixing one silently leaves the other broken.
@@ -186,10 +185,11 @@ layout, while the upstream surface-delta fixture digest remains unchanged.
 
 Upstream equivalent: partial only. Upstream `src/ghostty/mod.rs` exposes
 libghostty's underline color and `src/pane/terminal.rs` restores it into a pane
-style. Its new surface reuse and delta codecs avoid many complete cell payloads,
-but upstream `CellData` still has no underline-color field and its ANSI client
-renderer cannot emit SGR 58. The color is still lost at the pane/client boundary
-without this fork change.
+style. Its surface reuse and delta codecs avoid many complete cell payloads, and
+its ANSI renderer now caches identical packed styles, but upstream `CellData`
+still has no underline-color field and its ANSI client renderer cannot emit SGR
+58. The color is still lost at the pane/client boundary without this fork
+change.
 
 **Current protocol state.** `PROTOCOL_VERSION` is **23** in the fork. Upstream
 source, stable 0.9.1, and the current preview all publish protocol 22. Because
@@ -359,10 +359,12 @@ tests exercise the shared resolver through their existing projections.
 
 Upstream equivalent: partial only. Upstream now scopes outer window titles to
 each attached client's workspace and tab, and its rename overlays use a shared
-cursor-based `TextEditor`. This fork uses both upstream structures. Upstream's
-`Workspace::tab_display_name()` still returns a custom label or visual position
-only; it does not use the focused pane's OSC title, restore automation after an
-empty rename, or project dynamic names to the other surfaces.
+cursor-based `TextEditor`. Its Navigator now matches search terms independently,
+but still searches the label projected by `Workspace::tab_display_name()` rather
+than supplying a new label source. This fork uses those upstream structures.
+Upstream's resolver still returns a custom label or visual position only; it does
+not use the focused pane's OSC title, restore automation after an empty rename,
+or project dynamic names to the other surfaces.
 
 ### 6. `feat(ui): allow command-based automatic tab names`
 
