@@ -5,24 +5,22 @@ implementation commits on top of `herdrdev/herdr`, plus companion commits that
 only maintain documentation. This file tells an agent what they are, why they
 exist, and what to verify after rebasing onto a newer upstream.
 
-The latest comparison is against upstream `8d95e9bd` on 2026-09-25. Upstream
+The latest comparison is against upstream `fff6c820` on 2026-09-27. Upstream
 still lacks a complete equivalent for every behavior below, so the fork cannot
 yet be retired. Upstream remains on private protocol 22; the fork remains on 23
 because its `CellData` wire layout still carries underline color.
 
-Since the previous comparison, upstream replaced its custom pane-graphics API
-with server-owned native Kitty image rendering and source retention, while
-keeping the stable endpoint generation at 1 and the private protocol at 22. It
-also avoids rebuilding identical ANSI SGR sequences, avoids repeated scrollback
-page lookups, keeps copy mode active through projection updates, matches
-Navigator search terms independently, strengthens Win32 and Kitty input
-qualification, and documents the tmux auto-attach guard. The fork's ANSI style
-cache now includes underline color, preserving upstream's encoding optimization
-without treating color-only undercurl changes as identical. The graphics,
-scrollback, copy-mode, Navigator, Windows-input, and documentation changes do not
-implement any of the fork's seven behaviors. All seven equivalence assessments
-below were rechecked against the final upstream tree rather than carried forward
-as a historical allowlist.
+Since the previous comparison, upstream extracted the libghostty-vt bindings
+into the `ghostty-vt` workspace crate, added overlay-aware Kitty image cropping
+and single-pass placement encoding, refreshed the host palette after redraws,
+kept the API listener alive after transient accept failures, preserved legacy
+Ctrl+Shift key chords and split-CSI mouse grace, accepted plugin-install options
+before the repository, improved Windows docs-test handling, and revised CI
+caching. The fork's cursor-style accessor moved with upstream's Ghostty wrapper;
+the deleted local SGR parser remains unnecessary. None of these changes
+implements the fork's seven behaviors. All seven equivalence assessments below
+were rechecked against the final upstream tree rather than carried forward as a
+historical allowlist.
 
 The partial equivalents and integration points found in earlier comparisons
 remain: automatic names use upstream's client-specific title target and bounded
@@ -58,13 +56,11 @@ catastrophically broken or slow, check this before investigating anything else.
 ## Current pristine comparison
 
 The full, non-fail-fast suite was compared against a detached pristine worktree
-at exact upstream `8d95e9bd` on 2026-09-25. The fork ran 3,826 tests: 3,764
-passed, 62 failed, and ten were skipped. Pristine upstream ran 3,798 tests:
-3,735 passed, 63 failed, and ten were skipped. Every fork failure also occurred
-in pristine upstream, so there were no fork-only failures. Pristine alone failed
-`federated_client_starts_without_local_and_survives_its_restart`; the fork's
-corresponding test passed. The client-mode, cross-area, and multi-client wire
-canaries all passed in the fork.
+at exact upstream `fff6c820` on 2026-09-27. The fork ran 3,848 tests: 3,786
+passed, 62 failed, and ten were skipped. Pristine upstream ran 3,820 tests:
+3,758 passed, 62 failed, and ten were skipped. The sorted failure-name sets were
+identical, so there were no fork-only failures. The client-mode, cross-area, and
+multi-client wire canaries all passed in the fork.
 
 The shared failures are environmental on this machine: process/cwd discovery,
 git worktree setup, clipboard access, PTY spawning, headless shell startup,
@@ -120,16 +116,15 @@ Windows lint, and docs recipes separately so that baseline failure does not hide
 their results. If a later run fails elsewhere, compare that exact command in the
 pristine worktree rather than assuming this snapshot still applies.
 
-### Validation at `8d95e9bd`
+### Validation at `fff6c820`
 
-- `cargo fmt --check`, Clippy with warnings denied, the six UI hot-path
-  architecture tests, the generated API schema check from the full suite, and
-  19 focused wire, surface-delta, tab-render, automatic-name, and DECRQSS
-  regressions passed.
+- `cargo fmt --check`, Clippy with warnings denied, the generated API schema
+  check from the full suite, and 17 focused wire, surface-delta, tab-render,
+  automatic-name, and DECRQSS regressions passed.
 - `just bench-render-scale` passed. At 15 panes the combined render pipeline was
-  1.00× the one-pane median for background workspaces and 1.13× for active panes;
-  client-shell composition was 1.04× and 0.97× respectively. The benchmark also
-  exercised upstream's surface reuse and delta paths with 1 and 15 panes.
+  1.01× the one-pane median for background workspaces and 1.10× for active panes;
+  client-shell composition was 1.06× and 0.95× respectively. The benchmark also
+  exercised upstream's surface reuse, delta, graphics, and populated-agent paths.
 - `just check` stopped on the same two `api_ping` cwd failures in both trees. The
   complete non-fail-fast comparison above establishes that the remaining suite
   has no fork-only failure.
@@ -139,14 +134,11 @@ pristine worktree rather than assuming this snapshot still applies.
   absent; `just windows-lint` could not start in either tree because this machine
   has no Windows SDK/Zig libc configuration. These are toolchain baselines, not
   fork exceptions, and must be rechecked from scratch on the next sync.
-- Live checks could not reach an API-ready disposable session on this host.
-  Both the checkout and pristine `herdr 0.9.1` clients timed out waiting for the
-  named-session client socket when launched in dedicated PTYs. The fork server
-  log showed its valid NixOS Bash child exiting immediately with `SIGHUP`; the
-  paired suites also share the `portable_pty_setup_leaves_one_parent_pty_fd`
-  failure and the broader pane-spawn baseline above. No runtime code was changed
-  to accommodate the host. The stopped fork and pristine named sessions,
-  isolated config/state, and reproduction directory were deleted.
+- Live checks were not started because this scheduled job was not running inside
+  a Herdr-managed pane (`HERDR_ENV` was unset). The `herdr` and
+  `herdr-throwaway-repro` skills forbid controlling the focused session from
+  outside Herdr. The installed CLI was `herdr 0.9.1`; no session, pane, config,
+  or reproduction artifact was created.
 
 ## Implementation changes
 
@@ -183,7 +175,7 @@ dirty-patch, ANSI, and repaint paths.
 fallback. The `PaneSurface` bincode digest tests pin the changed positional
 layout, while the upstream surface-delta fixture digest remains unchanged.
 
-Upstream equivalent: partial only. Upstream `src/ghostty/mod.rs` exposes
+Upstream equivalent: partial only. Upstream `crates/ghostty-vt/src/lib.rs` exposes
 libghostty's underline color and `src/pane/terminal.rs` restores it into a pane
 style. Its surface reuse and delta codecs avoid many complete cell payloads, and
 its ANSI renderer now caches identical packed styles, but upstream `CellData`
@@ -232,7 +224,7 @@ style. Older upstream Herdr stayed silent, so Neovim fell back to a plain
 underline. Upstream now answers and preserves `4:3`, but its response omits the
 active SGR 58 underline color. This fork keeps the complete style query.
 
-- `src/ghostty/mod.rs` — `Terminal::cursor_style()` wraps upstream's
+- `crates/ghostty-vt/src/lib.rs` — `Terminal::cursor_style()` wraps upstream's
   `GHOSTTY_TERMINAL_DATA_CURSOR_STYLE`; libghostty remains the single owner of
   SGR state.
 - `src/pane/decrqss.rs` — a small tracker records only DECRQSS SGR query end
