@@ -6,6 +6,7 @@
 //! back into an ordinary [`PaneSurfacePatch`] against its retained grid.
 
 use base64::{engine::general_purpose::STANDARD_NO_PAD, Engine as _};
+use serde::{ser::SerializeSeq as _, Deserialize, Serialize};
 
 use super::{
     CellData, FrameData, PaneSurfaceFrame, PaneSurfacePatch, PaneSurfacePatchRow, ServerMessage,
@@ -36,6 +37,174 @@ pub(crate) struct SurfaceScroll {
 pub(crate) struct ScrollPatch {
     pub(crate) scrolls: Vec<SurfaceScroll>,
     pub(crate) patch: PaneSurfacePatch,
+}
+
+// `endpoint.surface-scroll.v1` was published with the original six-field
+// `CellData` layout. Keep that named codec frozen even though protocol 23 adds
+// underline color to ordinary pane-surface messages.
+struct PatchMessageV1<'a>(&'a PaneSurfacePatch);
+
+impl Serialize for PatchMessageV1<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_newtype_variant(
+            "ServerMessage",
+            19,
+            "PaneSurfacePatch",
+            &PatchV1Ref {
+                boot_id: &self.0.boot_id,
+                projection_revision: self.0.projection_revision,
+                base_surface_revision: self.0.base_surface_revision,
+                surface_revision: self.0.surface_revision,
+                rows: RowsV1(&self.0.rows),
+                panes: &self.0.panes,
+                cursor: &self.0.cursor,
+            },
+        )
+    }
+}
+
+#[derive(Serialize)]
+struct PatchV1Ref<'a> {
+    boot_id: &'a str,
+    projection_revision: u64,
+    base_surface_revision: u64,
+    surface_revision: u64,
+    rows: RowsV1<'a>,
+    panes: &'a [crate::protocol::PaneSurfacePane],
+    cursor: &'a Option<crate::protocol::CursorState>,
+}
+
+struct RowsV1<'a>(&'a [PaneSurfacePatchRow]);
+
+impl Serialize for RowsV1<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut rows = serializer.serialize_seq(Some(self.0.len()))?;
+        for row in self.0 {
+            rows.serialize_element(&RowV1Ref {
+                x: row.x,
+                y: row.y,
+                cells: CellsV1(&row.cells),
+            })?;
+        }
+        rows.end()
+    }
+}
+
+#[derive(Serialize)]
+struct RowV1Ref<'a> {
+    x: u16,
+    y: u16,
+    cells: CellsV1<'a>,
+}
+
+struct CellsV1<'a>(&'a [CellData]);
+
+impl Serialize for CellsV1<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut cells = serializer.serialize_seq(Some(self.0.len()))?;
+        for cell in self.0 {
+            cells.serialize_element(&CellV1Ref(cell))?;
+        }
+        cells.end()
+    }
+}
+
+struct CellV1Ref<'a>(&'a CellData);
+
+impl Serialize for CellV1Ref<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeTuple as _;
+
+        let mut cell = serializer.serialize_tuple(6)?;
+        cell.serialize_element(&self.0.symbol)?;
+        cell.serialize_element(&self.0.fg)?;
+        cell.serialize_element(&self.0.bg)?;
+        cell.serialize_element(&self.0.modifier)?;
+        cell.serialize_element(&self.0.skip)?;
+        cell.serialize_element(&self.0.hyperlink)?;
+        cell.end()
+    }
+}
+
+#[derive(Deserialize)]
+struct PatchV1 {
+    boot_id: String,
+    projection_revision: u64,
+    base_surface_revision: u64,
+    surface_revision: u64,
+    rows: Vec<RowV1>,
+    panes: Vec<crate::protocol::PaneSurfacePane>,
+    cursor: Option<crate::protocol::CursorState>,
+}
+
+#[derive(Deserialize)]
+struct RowV1 {
+    x: u16,
+    y: u16,
+    cells: Vec<CellV1>,
+}
+
+#[derive(Deserialize)]
+struct CellV1(String, u32, u32, u16, bool, Option<u32>);
+
+impl From<PatchV1> for PaneSurfacePatch {
+    fn from(value: PatchV1) -> Self {
+        Self {
+            boot_id: value.boot_id,
+            projection_revision: value.projection_revision,
+            base_surface_revision: value.base_surface_revision,
+            surface_revision: value.surface_revision,
+            rows: value
+                .rows
+                .into_iter()
+                .map(|row| PaneSurfacePatchRow {
+                    x: row.x,
+                    y: row.y,
+                    cells: row
+                        .cells
+                        .into_iter()
+                        .map(|cell| CellData {
+                            symbol: cell.0,
+                            fg: cell.1,
+                            bg: cell.2,
+                            modifier: cell.3,
+                            underline_color: 0,
+                            skip: cell.4,
+                            hyperlink: cell.5,
+                        })
+                        .collect(),
+                })
+                .collect(),
+            panes: value.panes,
+            cursor: value.cursor,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+// The placeholder variants preserve the published `PaneSurfacePatch` tag.
+#[allow(dead_code)]
+enum PatchMessageV1Owned {
+    Welcome,
+    Terminal,
+    Graphics,
+    ServerShutdown,
+    Notify,
+    Clipboard,
+    WindowTitle,
+    ReloadSoundConfig,
+    MouseCapture,
+    TerminalBell,
+    GraphicsFile,
+    GraphicsTransmissionRetired,
+    ClientShellSnapshot,
+    PaneSurface,
+    SemanticNotification,
+    ClientShellError,
+    DirectTerminalKeyboardProtocol,
+    ClientShellKeyboardReportAll,
+    ClientShellEndpointResponseChunk,
+    PaneSurfacePatch(PatchV1),
 }
 
 /// The row swaps that define [`SurfaceScroll`]. Both peers must derive the
@@ -312,7 +481,7 @@ pub(crate) fn message(last: &PaneSurfaceFrame, patch: &PaneSurfacePatch) -> Opti
         .cloned()
         .chain(residual)
         .collect();
-    let inner = ServerMessage::PaneSurfacePatch(PaneSurfacePatch {
+    let inner = PaneSurfacePatch {
         boot_id: patch.boot_id.clone(),
         projection_revision: patch.projection_revision,
         base_surface_revision: patch.base_surface_revision,
@@ -320,7 +489,15 @@ pub(crate) fn message(last: &PaneSurfaceFrame, patch: &PaneSurfacePatch) -> Opti
         rows,
         panes: patch.panes.clone(),
         cursor: patch.cursor.clone(),
-    });
+    };
+    if inner
+        .rows
+        .iter()
+        .flat_map(|row| &row.cells)
+        .any(|cell| cell.underline_color != 0)
+    {
+        return None;
+    }
     let mut bytes = Vec::with_capacity(1 + scrolls.len() * SCROLL_BYTES);
     bytes.push(scrolls.len() as u8);
     for scroll in &scrolls {
@@ -330,7 +507,7 @@ pub(crate) fn message(last: &PaneSurfaceFrame, patch: &PaneSurfacePatch) -> Opti
         }
         bytes.extend_from_slice(&scroll.shift.to_le_bytes());
     }
-    super::write_message(&mut bytes, &inner).ok()?;
+    super::write_message(&mut bytes, &PatchMessageV1(&inner)).ok()?;
     let message = ServerMessage::EndpointControl {
         kind: MESSAGE_KIND.into(),
         data: STANDARD_NO_PAD.encode(bytes),
@@ -372,12 +549,15 @@ pub(crate) fn decode(data: &str) -> Result<ScrollPatch, String> {
         })
         .collect();
     let mut frame = &bytes[header..];
-    let decoded = super::read_message::<_, ServerMessage>(&mut frame, MAX_FRAME_SIZE);
+    let decoded = super::read_message::<_, PatchMessageV1Owned>(&mut frame, MAX_FRAME_SIZE);
     if !frame.is_empty() {
         return Err("surface scroll has trailing bytes".into());
     }
     match decoded {
-        Ok(ServerMessage::PaneSurfacePatch(patch)) => Ok(ScrollPatch { scrolls, patch }),
+        Ok(PatchMessageV1Owned::PaneSurfacePatch(patch)) => Ok(ScrollPatch {
+            scrolls,
+            patch: patch.into(),
+        }),
         Ok(_) => Err("surface scroll does not carry a pane patch".into()),
         Err(error) => Err(format!("invalid surface scroll patch: {error}")),
     }
@@ -639,6 +819,14 @@ mod tests {
         }
         let patch = row_patch(&last, &next);
 
+        let Some(ServerMessage::EndpointControl { data, .. }) = message(&last, &patch) else {
+            panic!("scroll message");
+        };
+        assert_eq!(
+            data,
+            "AQIAAQAUAAoAAQAtAAAAEwRib290AQECAQMKAQExAAAAAAABBXcxOnAxAQEAFgwCARQKAAABAAAAAAAA"
+        );
+
         let (size, result) = round_trip(&last, &patch);
         assert_eq!(result.cells, next.cells);
         let plain = encoded_size(&patch).unwrap();
@@ -646,6 +834,20 @@ mod tests {
             size * 3 < plain,
             "scroll must be much smaller: {size} vs {plain}"
         );
+    }
+
+    #[test]
+    fn underline_colored_scroll_rows_use_the_protocol_23_patch() {
+        let last = surface();
+        let mut next = last.frame.clone();
+        for y in 0..PANE.height {
+            write(&mut next, y, &line(i32::from(y) + 1));
+        }
+        let new_row =
+            usize::from(PANE.y + PANE.height - 1) * usize::from(WIDTH) + usize::from(PANE.x);
+        next.cells[new_row].underline_color = 0xff11_2233;
+
+        assert!(message(&last, &row_patch(&last, &next)).is_none());
     }
 
     #[test]
