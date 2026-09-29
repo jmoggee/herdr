@@ -5,19 +5,22 @@ implementation commits on top of `herdrdev/herdr`, plus companion commits that
 only maintain documentation. This file tells an agent what they are, why they
 exist, and what to verify after rebasing onto a newer upstream.
 
-The latest comparison is against upstream `fff6c820` on 2026-09-27. Upstream
+The latest comparison is against upstream `9dc3a1df` on 2026-09-29. Upstream
 still lacks a complete equivalent for every behavior below, so the fork cannot
 yet be retired. Upstream remains on private protocol 22; the fork remains on 23
 because its `CellData` wire layout still carries underline color.
 
-Since the previous comparison, upstream extracted the libghostty-vt bindings
-into the `ghostty-vt` workspace crate, added overlay-aware Kitty image cropping
-and single-pass placement encoding, refreshed the host palette after redraws,
-kept the API listener alive after transient accept failures, preserved legacy
-Ctrl+Shift key chords and split-CSI mouse grace, accepted plugin-install options
-before the repository, improved Windows docs-test handling, and revised CI
-caching. The fork's cursor-style accessor moved with upstream's Ghostty wrapper;
-the deleted local SGR parser remains unnecessary. None of these changes
+Since the previous comparison, upstream added scroll-aware retained-surface
+delivery, blank-cell elision, multi-prefix key support, self-reported agent
+resume commands, bounded external-event batches, keyed terminal lookup,
+incremental BSP split updates, retained Kitty-image reuse, mouse input for
+terminal control, simpler SSH setup discovery and labels, Windows command-line
+reads without `PROCESS_VM_READ`, Windows host-palette capture, and clearer
+post-update summaries for old servers and saved machines. It also fixed a pane
+shell foreground-command test race and release testing under `diff.noPrefix`.
+The fork now uses upstream's scroll transport while preserving its newly
+published six-field `endpoint.surface-scroll.v1` cell layout; colored residual
+rows fall back to the ordinary protocol-23 patch. None of the upstream changes
 implements the fork's seven behaviors. All seven equivalence assessments below
 were rechecked against the final upstream tree rather than carried forward as a
 historical allowlist.
@@ -56,11 +59,14 @@ catastrophically broken or slow, check this before investigating anything else.
 ## Current pristine comparison
 
 The full, non-fail-fast suite was compared against a detached pristine worktree
-at exact upstream `fff6c820` on 2026-09-27. The fork ran 3,848 tests: 3,786
-passed, 62 failed, and ten were skipped. Pristine upstream ran 3,820 tests:
-3,758 passed, 62 failed, and ten were skipped. The sorted failure-name sets were
-identical, so there were no fork-only failures. The client-mode, cross-area, and
-multi-client wire canaries all passed in the fork.
+at exact upstream `9dc3a1df` on 2026-09-29. The fork ran 3,906 tests: 3,840
+passed, 66 failed, and 14 were skipped. Pristine upstream ran 3,877 tests: 3,809
+passed, 68 failed, and 14 were skipped. All 66 fork failures were also present
+upstream; pristine alone additionally failed the timing-sensitive
+`agent_start_rejects_a_shell_replaced_by_a_foreground_program` and
+`session_appearing_after_startup_is_preserved_before_autosave` tests. There were
+no fork-only failures. The client-mode, cross-area, and multi-client wire
+canaries all passed in the fork.
 
 The shared failures are environmental on this machine: process/cwd discovery,
 git worktree setup, clipboard access, PTY spawning, headless shell startup,
@@ -71,7 +77,7 @@ surface, the identical failures were:
 api_ping::*cwd*                                              (2)
 cli::cases::agents::agent_start_*                            (3)
 machine_api::*                                               (15)
-machine_setup::*                                             (5)
+machine_setup::*                                             (9)
 remote_attach::ssh_check_message_is_visible_while_authentication_waits (1)
 app::api::layouts::tests::*                                  (3)
 app::api::tabs::tests::tab_create_follows_cached_*           (1)
@@ -116,14 +122,15 @@ Windows lint, and docs recipes separately so that baseline failure does not hide
 their results. If a later run fails elsewhere, compare that exact command in the
 pristine worktree rather than assuming this snapshot still applies.
 
-### Validation at `fff6c820`
+### Validation at `9dc3a1df`
 
 - `cargo fmt --check`, Clippy with warnings denied, the generated API schema
-  check from the full suite, and 17 focused wire, surface-delta, tab-render,
-  automatic-name, and DECRQSS regressions passed.
+  check from the full suite, and 20 focused wire, surface-delta, surface-scroll,
+  tab-render, automatic-name, and DECRQSS regressions passed. The scroll checks
+  pin the published six-field v1 bytes and protocol-23 fallback for colored rows.
 - `just bench-render-scale` passed. At 15 panes the combined render pipeline was
-  1.01× the one-pane median for background workspaces and 1.10× for active panes;
-  client-shell composition was 1.06× and 0.95× respectively. The benchmark also
+  1.01× the one-pane median for background workspaces and 1.08× for active panes;
+  client-shell composition was 1.05× and 0.98× respectively. The benchmark also
   exercised upstream's surface reuse, delta, graphics, and populated-agent paths.
 - `just check` stopped on the same two `api_ping` cwd failures in both trees. The
   complete non-fail-fast comparison above establishes that the remaining suite
@@ -134,6 +141,7 @@ pristine worktree rather than assuming this snapshot still applies.
   absent; `just windows-lint` could not start in either tree because this machine
   has no Windows SDK/Zig libc configuration. These are toolchain baselines, not
   fork exceptions, and must be rechecked from scratch on the next sync.
+  `just ui-hot-path-architecture-test` passed all six tests in both trees.
 - Live checks were not started because this scheduled job was not running inside
   a Herdr-managed pane (`HERDR_ENV` was unset). The `herdr` and
   `herdr-throwaway-repro` skills forbid controlling the focused session from
@@ -159,12 +167,14 @@ colored undercurls rendered in the text foreground color.
 - `src/pane/terminal.rs` — `cell_data_from_style` carries it too. **There are two
   independent paths**: `from_ratatui_cell` (full-frame) and `cell_data_from_style`
   (dirty-patch). Both need the field; fixing one silently leaves the other broken.
-- `src/protocol/surface_delta.rs` and `surface_delta/decode.rs` — upstream's
-  named `endpoint.surface-delta.v1` codec is frozen with the original six-field
-  cell layout. A zero-allocation `CellV1` serializer keeps those bytes unchanged,
-  and the decoder restores `underline_color` as zero. A changed row or popup
-  replacement containing a nonzero underline color declines the delta so the
-  server sends the full protocol-23 frame instead of silently dropping SGR 58.
+- `src/protocol/surface_delta.rs`, `surface_delta/decode.rs`, and
+  `surface_scroll.rs` — upstream's named `endpoint.surface-delta.v1` and
+  `endpoint.surface-scroll.v1` codecs are frozen with the original six-field
+  cell layout. Zero-allocation `CellV1` serializers keep those bytes unchanged,
+  and the decoders restore `underline_color` as zero. A changed delta row, popup
+  replacement, or scroll residual containing a nonzero underline color declines
+  the named codec so the server sends the ordinary protocol-23 frame or patch
+  instead of silently dropping SGR 58.
 
 Regression tests: `cell_data_carries_underline_color_from_ratatui_cell`,
 `frame_data_restores_underline_color_into_ratatui_buffer`,
@@ -172,13 +182,17 @@ Regression tests: `cell_data_carries_underline_color_from_ratatui_cell`,
 `cells_visually_equal_detects_underline_color_change` cover the full-frame,
 dirty-patch, ANSI, and repaint paths.
 `surface_delta_uses_full_frame_for_underline_color_changes` pins the safe delta
-fallback. The `PaneSurface` bincode digest tests pin the changed positional
-layout, while the upstream surface-delta fixture digest remains unchanged.
+fallback. `underline_colored_scroll_rows_use_the_protocol_23_patch` pins the
+scroll fallback, while the scrolling-output fixture pins the published v1
+bytes. The `PaneSurface` bincode digest tests pin the changed positional layout,
+while the upstream surface-delta and surface-scroll fixture bytes remain
+unchanged.
 
 Upstream equivalent: partial only. Upstream `crates/ghostty-vt/src/lib.rs` exposes
 libghostty's underline color and `src/pane/terminal.rs` restores it into a pane
-style. Its surface reuse and delta codecs avoid many complete cell payloads, and
-its ANSI renderer now caches identical packed styles, but upstream `CellData`
+style. Its surface reuse and delta codecs avoid many complete cell payloads,
+and its new surface-scroll codec moves retained rows without resending their
+cells. Its ANSI renderer caches identical packed styles, but upstream `CellData`
 still has no underline-color field and its ANSI client renderer cannot emit SGR
 58. The color is still lost at the pane/client boundary without this fork
 change.
@@ -487,6 +501,7 @@ Conflict hotspots, in rough order of likelihood:
 | `src/pane/terminal.rs` | Both terminal fixes sit beside other query trackers |
 | `src/protocol/wire.rs` | `CellData` is a hot struct upstream |
 | `src/protocol/surface_delta.rs` and `src/protocol/surface_delta/decode.rs` | Frozen generation-1 delta cells must keep the upstream six-field layout; underline changes fall back to full frames |
+| `src/protocol/surface_scroll.rs` | Frozen generation-1 scroll patches must keep the upstream six-field layout; colored residual rows fall back to protocol-23 patches |
 | `src/protocol/render_ansi.rs` | `build_sgr` signature gained a parameter |
 | `src/app/window_title.rs` | `{tab}` indirectly depends on title or command state |
 | `src/client/shell/overlay_input.rs`, `src/client/shell/context_menu.rs`, and `src/app/api/tabs.rs` | Rename freezes or clears automatic mode |
