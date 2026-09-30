@@ -5,25 +5,23 @@ implementation commits on top of `herdrdev/herdr`, plus companion commits that
 only maintain documentation. This file tells an agent what they are, why they
 exist, and what to verify after rebasing onto a newer upstream.
 
-The latest comparison is against upstream `9dc3a1df` on 2026-09-29. Upstream
+The latest comparison is against upstream `331775c3` on 2026-09-30. Upstream
 still lacks a complete equivalent for every behavior below, so the fork cannot
 yet be retired. Upstream remains on private protocol 22; the fork remains on 23
 because its `CellData` wire layout still carries underline color.
 
-Since the previous comparison, upstream added scroll-aware retained-surface
-delivery, blank-cell elision, multi-prefix key support, self-reported agent
-resume commands, bounded external-event batches, keyed terminal lookup,
-incremental BSP split updates, retained Kitty-image reuse, mouse input for
-terminal control, simpler SSH setup discovery and labels, Windows command-line
-reads without `PROCESS_VM_READ`, Windows host-palette capture, and clearer
-post-update summaries for old servers and saved machines. It also fixed a pane
-shell foreground-command test race and release testing under `diff.noPrefix`.
-The fork now uses upstream's scroll transport while preserving its newly
-published six-field `endpoint.surface-scroll.v1` cell layout; colored residual
-rows fall back to the ordinary protocol-23 patch. None of the upstream changes
-implements the fork's seven behaviors. All seven equivalence assessments below
-were rechecked against the final upstream tree rather than carried forward as a
-historical allowlist.
+Since the previous comparison, upstream released 0.9.2 and 0.9.3. It now avoids
+duplicate Windows clipboard-history entries, decodes complete Win32 paste
+records, shows the configured prefix on the welcome screen, preserves
+escape-prefixed terminal bindings, bundles the pinned ConPTY runtime in local
+Windows builds, permits best-effort Windows ARM64 remote connections, and lets
+same-user Windows clients attach across elevation. Codex hooks now report turn
+completion. Worktree restore keeps unavailable checkouts grouped and prevents a
+repository workspace from becoming the parent of its own worktree child.
+Windows permission errors and agent documentation are clearer too. None of
+these changes implements the fork's seven behaviors. All seven equivalence
+assessments below were rechecked against the final upstream tree rather than
+carried forward as a historical allowlist.
 
 The partial equivalents and integration points found in earlier comparisons
 remain: automatic names use upstream's client-specific title target and bounded
@@ -59,14 +57,14 @@ catastrophically broken or slow, check this before investigating anything else.
 ## Current pristine comparison
 
 The full, non-fail-fast suite was compared against a detached pristine worktree
-at exact upstream `9dc3a1df` on 2026-09-29. The fork ran 3,906 tests: 3,840
-passed, 66 failed, and 14 were skipped. Pristine upstream ran 3,877 tests: 3,809
-passed, 68 failed, and 14 were skipped. All 66 fork failures were also present
-upstream; pristine alone additionally failed the timing-sensitive
-`agent_start_rejects_a_shell_replaced_by_a_foreground_program` and
-`session_appearing_after_startup_is_preserved_before_autosave` tests. There were
-no fork-only failures. The client-mode, cross-area, and multi-client wire
-canaries all passed in the fork.
+at exact upstream `331775c3` on 2026-09-30. The fork ran 3,923 tests: 3,857
+passed, 66 failed, and 14 were skipped. Pristine upstream ran 3,894 tests: 3,828
+passed, 66 failed, and 14 were skipped. Their sorted failure lists were
+identical. An initial fork run swapped the timing-sensitive Droid ED3 failure
+for `agent_start_rejects_a_shell_replaced_by_a_foreground_program`; the agent
+test passed immediately on an isolated rerun, and a second complete fork run
+matched pristine exactly. There were no fork-only failures. The client-mode,
+cross-area, and multi-client wire canaries all passed in the fork.
 
 The shared failures are environmental on this machine: process/cwd discovery,
 git worktree setup, clipboard access, PTY spawning, headless shell startup,
@@ -122,20 +120,20 @@ Windows lint, and docs recipes separately so that baseline failure does not hide
 their results. If a later run fails elsewhere, compare that exact command in the
 pristine worktree rather than assuming this snapshot still applies.
 
-### Validation at `9dc3a1df`
+### Validation at `331775c3`
 
 - `cargo fmt --check`, Clippy with warnings denied, the generated API schema
-  check from the full suite, and 20 focused wire, surface-delta, surface-scroll,
+  check from the full suite, and 19 focused wire, surface-delta, surface-scroll,
   tab-render, automatic-name, and DECRQSS regressions passed. The scroll checks
   pin the published six-field v1 bytes and protocol-23 fallback for colored rows.
 - `just bench-render-scale` passed. At 15 panes the combined render pipeline was
-  1.01× the one-pane median for background workspaces and 1.08× for active panes;
-  client-shell composition was 1.05× and 0.98× respectively. The benchmark also
+  1.03× the one-pane median for background workspaces and 1.08× for active panes;
+  client-shell composition was 1.05× and 0.93× respectively. The benchmark also
   exercised upstream's surface reuse, delta, graphics, and populated-agent paths.
 - `just check` stopped on the same two `api_ping` cwd failures in both trees. The
   complete non-fail-fast comparison above establishes that the remaining suite
   has no fork-only failure.
-- `just maintenance-test` ran 149 tests and had the same single
+- `just maintenance-test` ran 150 tests and had the same single
   missing-`openssl` host failure in both trees. `just integration-assets-test`
   and `just docs-contract-test` could not start in either tree because `bun` is
   absent; `just windows-lint` could not start in either tree because this machine
