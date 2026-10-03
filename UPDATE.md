@@ -5,20 +5,23 @@ implementation commits on top of `herdrdev/herdr`, plus companion commits that
 only maintain documentation. This file tells an agent what they are, why they
 exist, and what to verify after rebasing onto a newer upstream.
 
-The latest comparison is against upstream `d6b40d4e` on 2026-10-02. Upstream
+The latest comparison is against upstream `5da0a01e` on 2026-10-03. Upstream
 still lacks a complete equivalent for every behavior below, so the fork cannot
 yet be retired. Upstream remains on private protocol 22; the fork remains on 23
 because its `CellData` wire layout still carries underline color.
 
-Since the previous comparison, upstream added native actionable Windows toast
-notifications. Clicking a pane notification now restores the correct local or
-remote endpoint, rejects stale targets after a server restart, and foregrounds
-the owning terminal window; the implementation uses the bundled ConPTY host to
-avoid flashing a console. Upstream also restored Codex idle detection, expanded
-Codex trust-dialog and Pi working-state matching, and corrected the associated
-agent documentation. None of these changes implements the fork's seven
-behaviors. All seven equivalence assessments below were rechecked against the
-final upstream tree rather than carried forward as a historical allowlist.
+Since the previous comparison, upstream cached and bounded Windows process
+inspection, rewrote Windows PTY input forwarding to remove its dedicated thread,
+and bounded queued Enter waits during pane shutdown. It also made client
+snapshots skip terminal reads that their consumers do not need, added
+allocation-free terminal text extraction, stopped hidden panes retaining a
+full-size screen copy from creation, and starts new panes at their final laid-out
+size. The fork's Windows command-name selection now uses upstream's cached
+process snapshot, and its pane/snapshot paths replay cleanly on the new lifecycle
+and lazy-read structure. None of these changes implements any of the fork's
+seven behaviors, so no local implementation was removed. All seven equivalence
+assessments below were rechecked against the final upstream tree rather than
+carried forward as a historical allowlist.
 
 The partial equivalents and integration points found in earlier comparisons
 remain: automatic names use upstream's client-specific title target and bounded
@@ -54,13 +57,13 @@ catastrophically broken or slow, check this before investigating anything else.
 ## Current pristine comparison
 
 The full, non-fail-fast suite was compared against a detached pristine worktree
-at exact upstream `d6b40d4e` on 2026-10-02. The fork ran 3,923 tests: 3,857
-passed, 66 failed, and 14 were skipped. Pristine upstream ran 3,894 tests: 3,815
-passed, 79 failed, and 14 were skipped. Every fork failure also failed in the
-pristine tree, so there were no fork-only failures. The 13 additional pristine
-failures were timing-sensitive API shutdown, hook, agent-start, session, and
-client-mode tests. The client-mode, cross-area, and multi-client wire canaries
-all passed in the fork.
+at exact upstream `5da0a01e` on 2026-10-03. The fork ran 3,932 tests: 3,864
+passed, 68 failed, and 14 were skipped. Pristine upstream ran 3,903 tests: 3,835
+passed, 68 failed, and 14 were skipped. The sorted failing test names matched
+exactly, so there were no fork-only failures. The client-mode, cross-area, and
+multi-client wire canaries all passed in the recorded fork run. A separate
+earlier fork run had one timing-sensitive client-mode failure that disappeared
+on repeat and was absent from the recorded pristine comparison.
 
 The shared failures are environmental on this machine: process/cwd discovery,
 git worktree setup, clipboard access, PTY spawning, headless shell startup,
@@ -73,12 +76,12 @@ cli::cases::agents::agent_start_*                            (3)
 machine_api::*                                               (15)
 machine_setup::*                                             (9)
 remote_attach::ssh_check_message_is_visible_while_authentication_waits (1)
-app::api::layouts::tests::*                                  (3)
+app::api::layouts::tests::*                                  (4)
 app::api::tabs::tests::tab_create_follows_cached_*           (1)
 app::api::tests::pane_died_respawns_shell_*                  (1)
 app::api::workspaces::tests::workspace_create_*              (2)
 app::api::worktrees::tests::*                                (8)
-app::tests::{pane_exit_checkpoint_*,pane_split_request_*}     (4)
+app::tests::{hidden_panes_*,pane_exit_checkpoint_*,pane_split_request_*} (5)
 live_handoff::live_handoff_keeps_unmanaged_agent_name_*       (1)
 detect::tests::foreground_job_detects_agent_behind_shell_*    (1)
 integration::tests::{install_hermes_*,uninstall_hermes_*}     (10)
@@ -116,15 +119,15 @@ Windows lint, and docs recipes separately so that baseline failure does not hide
 their results. If a later run fails elsewhere, compare that exact command in the
 pristine worktree rather than assuming this snapshot still applies.
 
-### Validation at `d6b40d4e`
+### Validation at `5da0a01e`
 
 - `cargo fmt --check`, Clippy with warnings denied, the generated API schema
-  check from the full suite, and 18 focused wire, surface-delta, surface-scroll,
+  check from the full suite, and 19 focused wire, surface-delta, surface-scroll,
   tab-render, automatic-name, and DECRQSS regressions passed. The scroll checks
   pin the published six-field v1 bytes and protocol-23 fallback for colored rows.
 - `just bench-render-scale` passed. At 15 panes the combined render pipeline was
-  1.00× the one-pane median for background workspaces and 1.16× for active panes;
-  client-shell composition was 1.03× and 0.98× respectively. The benchmark also
+  1.00× the one-pane median for background workspaces and 1.08× for active panes;
+  client-shell composition was 1.06× and 0.99× respectively. The benchmark also
   exercised upstream's surface reuse, delta, graphics, and populated-agent paths.
 - `just check` stopped on the same two `api_ping` cwd failures in both trees. The
   complete non-fail-fast comparison above establishes that the remaining suite
