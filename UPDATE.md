@@ -5,23 +5,20 @@ implementation commits on top of `herdrdev/herdr`, plus companion commits that
 only maintain documentation. This file tells an agent what they are, why they
 exist, and what to verify after rebasing onto a newer upstream.
 
-The latest comparison is against upstream `5da0a01e` on 2026-10-03. Upstream
+The latest comparison is against upstream `5da0a01e` on 2026-10-04. Upstream
 still lacks a complete equivalent for every behavior below, so the fork cannot
 yet be retired. Upstream remains on private protocol 22; the fork remains on 23
 because its `CellData` wire layout still carries underline color.
 
-Since the previous comparison, upstream cached and bounded Windows process
-inspection, rewrote Windows PTY input forwarding to remove its dedicated thread,
-and bounded queued Enter waits during pane shutdown. It also made client
-snapshots skip terminal reads that their consumers do not need, added
-allocation-free terminal text extraction, stopped hidden panes retaining a
-full-size screen copy from creation, and starts new panes at their final laid-out
-size. The fork's Windows command-name selection now uses upstream's cached
-process snapshot, and its pane/snapshot paths replay cleanly on the new lifecycle
-and lazy-read structure. None of these changes implements any of the fork's
-seven behaviors, so no local implementation was removed. All seven equivalence
-assessments below were rechecked against the final upstream tree rather than
-carried forward as a historical allowlist.
+No upstream commit arrived since the 2026-10-03 comparison: both fetches still
+resolve `origin/master` to `5da0a01e`. The prior run had integrated upstream's
+cached and bounded Windows process inspection, threadless Windows PTY input
+forwarding, bounded queued Enter waits, lazy client snapshot reads,
+allocation-free terminal text extraction, hidden-pane screen retention fix, and
+final-size pane creation. This run rechecked all seven behavior implementations
+and equivalence assessments against the unchanged upstream tree rather than
+carrying the prior result as an allowlist. Upstream still provides only the
+partial equivalents described below, so no local implementation was removed.
 
 The partial equivalents and integration points found in earlier comparisons
 remain: automatic names use upstream's client-specific title target and bounded
@@ -57,18 +54,18 @@ catastrophically broken or slow, check this before investigating anything else.
 ## Current pristine comparison
 
 The full, non-fail-fast suite was compared against a detached pristine worktree
-at exact upstream `5da0a01e` on 2026-10-03. The fork ran 3,932 tests: 3,864
-passed, 68 failed, and 14 were skipped. Pristine upstream ran 3,903 tests: 3,835
-passed, 68 failed, and 14 were skipped. The sorted failing test names matched
-exactly, so there were no fork-only failures. The client-mode, cross-area, and
-multi-client wire canaries all passed in the recorded fork run. A separate
-earlier fork run had one timing-sensitive client-mode failure that disappeared
-on repeat and was absent from the recorded pristine comparison.
+at exact upstream `5da0a01e` on 2026-10-04. The fork ran 3,932 tests: 3,864
+passed, 68 failed, and 14 were skipped. Pristine upstream ran 3,903 tests: 3,821
+passed, 82 failed, and 14 were skipped. Every fork failure also failed in
+pristine upstream, so there were no fork-only failures. The pristine run had 14
+additional load-sensitive failures in hook, pane-shutdown, live-handoff,
+client-mode, session-autosave, and image-cap tests. The client-mode, cross-area,
+and multi-client wire canaries all passed in the fork run.
 
 The shared failures are environmental on this machine: process/cwd discovery,
 git worktree setup, clipboard access, PTY spawning, headless shell startup,
 agent startup, machine-bridge fixtures, and live handoff. Grouped by test
-surface, the identical failures were:
+surface, the shared failures were:
 
 ```
 api_ping::*cwd*                                              (2)
@@ -122,14 +119,15 @@ pristine worktree rather than assuming this snapshot still applies.
 ### Validation at `5da0a01e`
 
 - `cargo fmt --check`, Clippy with warnings denied, the generated API schema
-  check from the full suite, and 19 focused wire, surface-delta, surface-scroll,
-  tab-render, automatic-name, and DECRQSS regressions passed. The scroll checks
-  pin the published six-field v1 bytes and protocol-23 fallback for colored rows.
+  check from the full suite, and 16 explicitly selected wire, surface-delta,
+  surface-scroll, tab-render, and automatic-name regressions passed. The full
+  suite also passed the DECRQSS regressions and pins the published six-field v1
+  bytes and protocol-23 fallback for colored rows.
 - `just bench-render-scale` passed. At 15 panes the combined render pipeline was
-  1.00× the one-pane median for background workspaces and 1.08× for active panes;
-  client-shell composition was 1.06× and 0.99× respectively. The benchmark also
+  1.06× the one-pane median for background workspaces and 1.07× for active panes;
+  client-shell composition was 1.17× and 0.97× respectively. The benchmark also
   exercised upstream's surface reuse, delta, graphics, and populated-agent paths.
-- `just check` stopped on the same two `api_ping` cwd failures in both trees. The
+- `just check` stopped on the same `api_ping` cwd failure in both trees. The
   complete non-fail-fast comparison above establishes that the remaining suite
   has no fork-only failure.
 - `just maintenance-test` ran 150 tests and had the same single
@@ -138,7 +136,7 @@ pristine worktree rather than assuming this snapshot still applies.
   absent; `just windows-lint` could not start in either tree because this machine
   has no Windows SDK/Zig libc configuration. These are toolchain baselines, not
   fork exceptions, and must be rechecked from scratch on the next sync.
-  `just ui-hot-path-architecture-test` passed all six tests in both trees.
+  `just ui-hot-path-architecture-test` passed all six tests in the fork.
 - Live checks were not started because this scheduled job was not running inside
   a Herdr-managed pane (`HERDR_ENV` was unset). The `herdr` and
   `herdr-throwaway-repro` skills forbid controlling the focused session from
