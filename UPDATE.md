@@ -5,19 +5,33 @@ implementation commits on top of `herdrdev/herdr`, plus companion commits that
 only maintain documentation. This file tells an agent what they are, why they
 exist, and what to verify after rebasing onto a newer upstream.
 
-The latest comparison is against upstream `e35f3937` on 2026-10-05. Upstream
+The latest comparison is against upstream `3d9d2b18` on 2026-10-06. Upstream
 still lacks a complete equivalent for every behavior below, so the fork cannot
 yet be retired. Upstream remains on private protocol 22; the fork remains on 23
 because its `CellData` wire layout still carries underline color.
 
-Two upstream commits arrived after `5da0a01e`. Upstream now recognizes Hermes
-when its installer launches the agent through an exact Python bootstrap wrapper,
-with captured-process and rejection coverage. It also strips inherited
-`HERDR_STARTUP_CWD` and `HERDR_SESSION` from integration-test subprocesses so a
-test run started inside Herdr cannot accidentally attach to or restore the
-caller's pane session. Neither change implements any of the seven fork
-behaviors. This run rechecked every local implementation and equivalence
-assessment against the new upstream tree, so no local implementation was
+Sixteen upstream commits arrived after `e35f3937`. The functional changes are:
+
+- session restore defers Git discovery so a slow repository cannot block the
+  server, and failed startup refreshes are retried even without a client;
+- managed plugins can update from GitHub, with installation state and CLI flows
+  moved behind shared plugin-installation helpers;
+- the server survives hangups, transient listener and transport thread-spawn
+  failures, and failed worker spawns without silently dropping queued work;
+- agent identity now survives a job being suspended or moved to the background,
+  while replacement processes still take over cleanly;
+- forwarded SSH-agent validation backs off instead of probing every second;
+- remote attaches retain each client's sidebar preferences, Windows cross-
+  elevation access is opt-in, `ctrl+[` leaves Navigate mode, and sidebar
+  collapse remains clickable beside agent scrollbars;
+- Antigravity and Grok detection rules were refreshed, and dependency/workflow
+  pins moved forward.
+
+None implements any of the seven fork behaviors. The command-name conflict was
+the only semantic integration point: command mode now adds its five-second
+refresh to upstream's background-agent-aware probe decision, while title mode
+keeps upstream's cadence unchanged. This run rechecked every local
+implementation and equivalence assessment, so no local implementation was
 removed.
 
 The partial equivalents and integration points found in earlier comparisons
@@ -54,14 +68,14 @@ catastrophically broken or slow, check this before investigating anything else.
 ## Current pristine comparison
 
 The full, non-fail-fast suite was compared against a detached pristine worktree
-at exact upstream `e35f3937` on 2026-10-05. The final fork run executed 3,938
-tests: 3,870 passed, 68 failed, and 14 were skipped. Pristine upstream executed
-3,909 tests: 3,838 passed, 71 failed, and 14 were skipped. Every fork failure
-also failed in pristine upstream, so there were no fork-only failures. The
-pristine run additionally failed the shell-signaled shutdown, shell-command
-detection, and federated-client restart tests; those are load-sensitive and did
-not fail in the final fork run. The client-mode, cross-area, and multi-client
-wire canaries passed in the fork run.
+at exact upstream `3d9d2b18` on 2026-10-06. The fork run executed 4,018 tests:
+3,950 passed, 68 failed, and 14 were skipped. Pristine upstream executed 3,989
+tests: 3,918 passed, 71 failed, and 14 were skipped. Every fork failure also
+failed in pristine upstream, so there were no fork-only failures. The pristine
+run additionally failed the shell-signaled shutdown, late-session autosave, and
+federated-client restart tests; those are load-sensitive and did not fail in the
+fork run. The client-mode, cross-area, and multi-client wire canaries passed in
+the fork run.
 
 The shared failures are environmental on this machine: process/cwd discovery,
 git worktree setup, clipboard access, PTY spawning, headless shell startup,
@@ -117,7 +131,7 @@ Windows lint, and docs recipes separately so that baseline failure does not hide
 their results. If a later run fails elsewhere, compare that exact command in the
 pristine worktree rather than assuming this snapshot still applies.
 
-### Validation at `e35f3937`
+### Validation at `3d9d2b18`
 
 - `cargo fmt --check`, Clippy with warnings denied, the generated API schema
   check from the full suite, and 19 explicitly selected wire, surface-delta,
@@ -125,12 +139,12 @@ pristine worktree rather than assuming this snapshot still applies.
   suite also passed the DECRQSS regressions and pins the published six-field v1
   bytes and protocol-23 fallback for colored rows.
 - `just bench-render-scale` passed. At 15 panes the combined render pipeline was
-  1.01× the one-pane median for background workspaces and 1.08× for active panes;
-  client-shell composition was 1.04× and 0.96× respectively. The benchmark also
+  1.01× the one-pane median for background workspaces and 1.13× for active panes;
+  client-shell composition was 1.03× and 0.97× respectively. The benchmark also
   exercised upstream's surface reuse, delta, graphics, and populated-agent paths.
-- `just check` stopped on the same `api_ping` cwd failure in both trees. The
-  complete non-fail-fast comparison above establishes that the remaining suite
-  has no fork-only failure.
+- `just check` stopped at its nextest stage in both trees. The complete
+  non-fail-fast comparison above establishes that the suite has no fork-only
+  failure.
 - `just maintenance-test` ran 150 tests and had the same single
   missing-`openssl` host failure in both trees. `just integration-assets-test`
   and `just docs-contract-test` could not start in either tree because `bun` is
@@ -141,8 +155,7 @@ pristine worktree rather than assuming this snapshot still applies.
 - Live checks were not started because this scheduled job was not running inside
   a Herdr-managed pane (`HERDR_ENV` was unset). The `herdr` and
   `herdr-throwaway-repro` skills forbid controlling the focused session from
-  outside Herdr. The installed CLI was `herdr 0.9.1`; no session, pane, config,
-  or reproduction artifact was created.
+  outside Herdr. No session, pane, config, or reproduction artifact was created.
 
 ## Implementation changes
 
@@ -407,12 +420,13 @@ tests pin sole-child versus ambiguous-child fallback.
 title invalidation for a client viewing a non-global tab, without requesting a
 generic full render.
 
-Upstream equivalent: partial only. Upstream now bounds Linux foreground
-process-tree scans and scopes window titles to each client's view; the fork uses
-those APIs instead of retaining its former scan or global-title assumptions.
-Upstream still does not cache a foreground command in `TerminalState`, opt
-runtimes into periodic command probes, expose this setting, or use commands as
-tab labels.
+Upstream equivalent: partial only. Upstream bounds Linux foreground process-tree
+scans, scopes window titles to each client's view, and now keeps agent identity
+while a job is suspended or backgrounded. The fork uses those APIs and composes
+its periodic command refresh with upstream's background-agent-aware probe
+decision instead of retaining its former scan or cadence. Upstream still does
+not cache a foreground command in `TerminalState`, opt runtimes into periodic
+command probes, expose this setting, or use commands as tab labels.
 
 ### 7. `fix(ui): apply tab body style to full tab rect`
 
