@@ -5,23 +5,25 @@ implementation commits on top of `herdrdev/herdr`, plus companion commits that
 only maintain documentation. This file tells an agent what they are, why they
 exist, and what to verify after rebasing onto a newer upstream.
 
-The latest comparison is against upstream `a124eed7` on 2026-10-07. Upstream
+The latest comparison is against upstream `4dc23bb1` on 2026-10-08. Upstream
 still lacks a complete equivalent for every behavior below, so the fork cannot
 yet be retired. Upstream remains on private protocol 22; the fork remains on 23
 because its `CellData` wire layout still carries underline color.
 
-One upstream commit arrived after `3d9d2b18`. It routes every pane key through
-libghostty and deletes Herdr's duplicate key encoder. The same change adds an
-input-transparency conformance harness and fixes split host replies, Kitty and
-modifyOtherKeys encoding, IME text, held-key releases, macOS Option/Alt,
-non-US and AltGr input, Windows console handling, and pixel-mouse routing.
+Seven upstream commits arrived after `a124eed7`. They preserve Windows
+accent/dead-key shortcuts, preserve Windows sessions during host shutdown,
+retain workspace navigation while switching machines, keep Kitty graphics
+storage disabled until graphics are explicitly enabled, tell fish that Herdr
+reflows its prompt, preserve Windows shell working directories (including WoW64
+and Scoop-shim cases), and make hyperlink activation respect mouse-capture and
+plugin routing.
 
-None implements any of the seven fork behaviors. The command-name conflict was
-already integrated in the previous run. This run's only conflict was beside
-upstream's new libghostty key-encoder initialization in `PaneTerminal`; the
-fork's DECRQSS query tracker remains independent of key encoding. This run
-rechecked every local implementation and equivalence assessment, so no local
-implementation was removed.
+None implements any of the seven fork behaviors. The changes in `src/pane.rs`
+and `src/platform/windows.rs` are adjacent to command-name process tracking but
+do not cache or project a foreground command as a tab label. The 34-commit fork
+series replayed without conflicts, and `git range-diff` accounted for every
+commit one-for-one. This run rechecked every local implementation and
+equivalence assessment, so no local implementation was removed.
 
 The partial equivalents and integration points found in earlier comparisons
 remain: automatic names use upstream's client-specific title target and bounded
@@ -57,13 +59,15 @@ catastrophically broken or slow, check this before investigating anything else.
 ## Current pristine comparison
 
 The full, non-fail-fast suite was compared against a detached pristine worktree
-at exact upstream `a124eed7` on 2026-10-07. The fork run executed 3,981 tests:
-3,913 passed, 68 failed, and 14 were skipped. Pristine upstream executed 3,952
-tests: 3,882 passed, 70 failed, and 14 were skipped. Every fork failure also
+at exact upstream `4dc23bb1` on 2026-10-08. The fork run executed 3,990 tests:
+3,922 passed, 68 failed, and 14 were skipped. Pristine upstream executed 3,961
+tests: 3,891 passed, 70 failed, and 14 were skipped. Every fork failure also
 failed in pristine upstream, so there were no fork-only failures. The pristine
-run additionally failed the shell-signaled shutdown and federated-client restart
-tests; those are load-sensitive and did not fail in the fork run. The
-client-mode, cross-area, and multi-client wire canaries passed in the fork run.
+run additionally failed
+`detect::tests::foreground_job_detects_shell_running_command` and
+`client_mode::federated_client_starts_without_local_and_survives_its_restart`;
+those are load-sensitive and did not fail in the fork run. The client-mode,
+cross-area, and multi-client wire canaries passed in the fork run.
 
 The shared failures are environmental on this machine: process/cwd discovery,
 git worktree setup, clipboard access, PTY spawning, headless shell startup,
@@ -119,16 +123,17 @@ Windows lint, and docs recipes separately so that baseline failure does not hide
 their results. If a later run fails elsewhere, compare that exact command in the
 pristine worktree rather than assuming this snapshot still applies.
 
-### Validation at `a124eed7`
+### Validation at `4dc23bb1`
 
 - `cargo fmt --check`, Clippy with warnings denied, the generated API schema
   check from the full suite, and 22 explicitly selected wire, surface-delta,
   surface-scroll, tab-render, and automatic-name regressions passed. The full
   suite also passed the DECRQSS regressions and pins the published six-field v1
   bytes and protocol-23 fallback for colored rows.
-- `just bench-render-scale` passed. At 15 panes the combined render pipeline was
-  1.01× the one-pane median for background workspaces and 1.07× for active panes;
-  client-shell composition was 1.04× and 0.99× respectively. The benchmark also
+- `just bench-render-scale` passed all seven profiles. At 15 panes the combined
+  render pipeline was 0.74× the one-pane median for background workspaces and
+  1.09× for active panes; client-shell composition was 0.73× and 0.97×
+  respectively. The benchmark also
   exercised upstream's surface reuse, delta, graphics, and populated-agent paths.
 - `just check` stopped at its nextest stage in both trees. The complete
   non-fail-fast comparison above establishes that the suite has no fork-only
