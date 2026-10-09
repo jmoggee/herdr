@@ -5,25 +5,28 @@ implementation commits on top of `herdrdev/herdr`, plus companion commits that
 only maintain documentation. This file tells an agent what they are, why they
 exist, and what to verify after rebasing onto a newer upstream.
 
-The latest comparison is against upstream `4dc23bb1` on 2026-10-08. Upstream
+The latest comparison is against upstream `2563803d` on 2026-10-09. Upstream
 still lacks a complete equivalent for every behavior below, so the fork cannot
 yet be retired. Upstream remains on private protocol 22; the fork remains on 23
 because its `CellData` wire layout still carries underline color.
 
-Seven upstream commits arrived after `a124eed7`. They preserve Windows
-accent/dead-key shortcuts, preserve Windows sessions during host shutdown,
-retain workspace navigation while switching machines, keep Kitty graphics
-storage disabled until graphics are explicitly enabled, tell fish that Herdr
-reflows its prompt, preserve Windows shell working directories (including WoW64
-and Scoop-shim cases), and make hyperlink activation respect mouse-capture and
-plugin routing.
+Seven upstream commits arrived after `4dc23bb1`. They preserve literal `+`
+keybindings, reuse unchanged shell-detection text on Unix and Windows, deliver
+quick Escape taps under the macOS Kitty keyboard policy, abandon incomplete
+host-color replies after an idle timeout without dropping later input, map
+non-Latin Ctrl chords to their base keys, and recognize shifted `/` when opening
+goto search in report-all panes.
 
 None implements any of the seven fork behaviors. The changes in `src/pane.rs`
-and `src/platform/windows.rs` are adjacent to command-name process tracking but
-do not cache or project a foreground command as a tab label. The 34-commit fork
-series replayed without conflicts, and `git range-diff` accounted for every
-commit one-for-one. This run rechecked every local implementation and
-equivalence assessment, so no local implementation was removed.
+and `src/pane/agent_detection.rs` reuse prepared detection input but do not cache
+or project a foreground command as a tab label. The host-color timeout in
+`src/pane/terminal.rs` concerns OSC color queries, not DECRQSS SGR replies or SGR
+58. All 35 existing fork commits replayed without conflicts, and `git
+range-diff` accounted for every commit one-for-one. The only integration edit
+passes the fork's existing command-tracking flag into a new upstream detection
+test helper; it does not change runtime behavior. This run rechecked every local
+implementation and equivalence assessment, so no local implementation was
+removed.
 
 The partial equivalents and integration points found in earlier comparisons
 remain: automatic names use upstream's client-specific title target and bounded
@@ -59,14 +62,14 @@ catastrophically broken or slow, check this before investigating anything else.
 ## Current pristine comparison
 
 The full, non-fail-fast suite was compared against a detached pristine worktree
-at exact upstream `4dc23bb1` on 2026-10-08. The fork run executed 3,990 tests:
-3,922 passed, 68 failed, and 14 were skipped. Pristine upstream executed 3,961
-tests: 3,891 passed, 70 failed, and 14 were skipped. Every fork failure also
+at exact upstream `2563803d` on 2026-10-09. The fork run executed 4,021 tests:
+3,953 passed, 68 failed, and 14 were skipped. Pristine upstream executed 3,992
+tests: 3,917 passed, 75 failed, and 14 were skipped. Every fork failure also
 failed in pristine upstream, so there were no fork-only failures. The pristine
-run additionally failed
-`detect::tests::foreground_job_detects_shell_running_command` and
-`client_mode::federated_client_starts_without_local_and_survives_its_restart`;
-those are load-sensitive and did not fail in the fork run. The client-mode,
+run additionally failed the session-appearing autosave case, tab-status reload,
+two live-handoff server-preservation cases, blocked-git restore, federated client
+restart, and `foreground_job_detects_shell_running_command`. Those seven cases
+are load-sensitive and did not fail in the fork run. The client-mode,
 cross-area, and multi-client wire canaries passed in the fork run.
 
 The shared failures are environmental on this machine: process/cwd discovery,
@@ -123,16 +126,16 @@ Windows lint, and docs recipes separately so that baseline failure does not hide
 their results. If a later run fails elsewhere, compare that exact command in the
 pristine worktree rather than assuming this snapshot still applies.
 
-### Validation at `4dc23bb1`
+### Validation at `2563803d`
 
 - `cargo fmt --check`, Clippy with warnings denied, the generated API schema
-  check from the full suite, and 22 explicitly selected wire, surface-delta,
-  surface-scroll, tab-render, and automatic-name regressions passed. The full
-  suite also passed the DECRQSS regressions and pins the published six-field v1
-  bytes and protocol-23 fallback for colored rows.
+  check from the full suite, and 18 explicitly selected wire, DECRQSS,
+  surface-delta, surface-scroll, tab-render, and automatic-name regressions
+  passed. The full suite pins the published six-field v1 bytes and protocol-23
+  fallback for colored rows.
 - `just bench-render-scale` passed all seven profiles. At 15 panes the combined
-  render pipeline was 0.74× the one-pane median for background workspaces and
-  1.09× for active panes; client-shell composition was 0.73× and 0.97×
+  render pipeline was 1.02× the one-pane median for background workspaces and
+  1.10× for active panes; client-shell composition was 1.07× and 0.99×
   respectively. The benchmark also
   exercised upstream's surface reuse, delta, graphics, and populated-agent paths.
 - `just check` stopped at its nextest stage in both trees. The complete
@@ -144,7 +147,7 @@ pristine worktree rather than assuming this snapshot still applies.
   absent; `just windows-lint` could not start in either tree because this machine
   has no Windows SDK/Zig libc configuration. These are toolchain baselines, not
   fork exceptions, and must be rechecked from scratch on the next sync.
-  `just ui-hot-path-architecture-test` passed all six tests in the fork.
+  `just ui-hot-path-architecture-test` passed all six tests in both trees.
 - Live checks were not started because this scheduled job was not running inside
   a Herdr-managed pane (`HERDR_ENV` was unset). The `herdr` and
   `herdr-throwaway-repro` skills forbid controlling the focused session from
