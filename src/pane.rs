@@ -3991,6 +3991,7 @@ impl PaneRuntime {
             self.detection_content_seq.clone(),
             self.full_lifecycle_authority_active.clone(),
             self.self_reported_agent_active.clone(),
+            self.track_foreground_command.clone(),
             events,
         );
         self.detect_handle = Some(handle);
