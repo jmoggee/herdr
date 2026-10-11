@@ -5,12 +5,12 @@ implementation commits on top of `herdrdev/herdr`, plus companion commits that
 only maintain documentation. This file tells an agent what they are, why they
 exist, and what to verify after rebasing onto a newer upstream.
 
-The latest comparison is against upstream `2563803d` on 2026-10-10. Upstream
+The latest comparison is against upstream `2563803d` on 2026-10-11. Upstream
 still lacks a complete equivalent for every behavior below, so the fork cannot
 yet be retired. Upstream remains on private protocol 22; the fork remains on 23
 because its `CellData` wire layout still carries underline color.
 
-No upstream commits arrived since the 2026-10-09 sync; `origin/master` remains
+No upstream commits arrived since the 2026-10-10 sync; `origin/master` remains
 at `2563803d`. The most recent upstream batch still consists of seven commits
 after `4dc23bb1`. They preserve literal `+`
 keybindings, reuse unchanged shell-detection text on Unix and Windows, deliver
@@ -24,7 +24,7 @@ and `src/pane/agent_detection.rs` reuse prepared detection input but do not cach
 or project a foreground command as a tab label. The host-color timeout in
 `src/pane/terminal.rs` concerns OSC color queries, not DECRQSS SGR replies or SGR
 58. Local `master` already matched `fork/master`, and rebasing onto the unchanged
-upstream was a no-op. This run rechecked every local implementation and
+upstream was a no-op. The 2026-10-11 run rechecked every local implementation and
 equivalence assessment, so no local implementation was removed.
 
 The partial equivalents and integration points found in earlier comparisons
@@ -61,20 +61,18 @@ catastrophically broken or slow, check this before investigating anything else.
 ## Current pristine comparison
 
 The full, non-fail-fast suite was compared against a detached pristine worktree
-at exact upstream `2563803d` on 2026-10-10. The accepted rerun executed 4,021
-fork tests: 3,953 passed, 68 failed, and 14 were skipped. Pristine upstream
-executed 3,992 tests: 3,923 passed, 69 failed, and 14 were skipped. Every fork
-failure also failed in pristine upstream, so there were no fork-only failures.
-Pristine additionally failed
-`shutdown_preserves_session_after_shell_is_signaled`, a load-sensitive case.
-The client-mode, cross-area, and multi-client wire canaries passed in the fork
-run.
+at exact upstream `2563803d` on 2026-10-11. The fork executed 4,021 tests: 3,952
+passed, 69 failed, and 14 were skipped. Pristine upstream executed 3,992 tests:
+3,916 passed, 76 failed, and 14 were skipped. Every fork failure also failed in
+pristine upstream, so there were no fork-only failures. Pristine additionally
+failed seven load-sensitive process-lifecycle, session, and client-mode tests.
 
-The first paired run had 12 apparent fork-only failures in agent startup, hook
-reporting, session persistence, and client-mode recovery. Each passed when
-rerun alone, and none recurred in the complete fork rerun. This is diagnostic
-evidence for load sensitivity, not a permanent allowlist; future runs must still
-recompute the comparison from scratch.
+The fork's `federated_client_starts_without_local_and_survives_its_restart`
+client-mode canary failed both in the complete fork run and in pristine
+upstream. A focused fork rerun also failed on this host. Cross-area and
+multi-client wire canaries passed. This is current baseline evidence, not a
+permanent allowlist; future runs must still recompute the comparison from
+scratch.
 
 The shared failures are environmental on this machine: process/cwd discovery,
 git worktree setup, clipboard access, PTY spawning, headless shell startup,
@@ -87,6 +85,7 @@ cli::cases::agents::agent_start_*                            (3)
 machine_api::*                                               (15)
 machine_setup::*                                             (9)
 remote_attach::ssh_check_message_is_visible_while_authentication_waits (1)
+client_mode::federated_client_starts_without_local_and_survives_its_restart (1)
 app::api::layouts::tests::*                                  (4)
 app::api::tabs::tests::tab_create_follows_cached_*           (1)
 app::api::tests::pane_died_respawns_shell_*                  (1)
@@ -130,7 +129,7 @@ Windows lint, and docs recipes separately so that baseline failure does not hide
 their results. If a later run fails elsewhere, compare that exact command in the
 pristine worktree rather than assuming this snapshot still applies.
 
-### Validation at `2563803d` on 2026-10-10
+### Validation at `2563803d` on 2026-10-11
 
 - `cargo fmt --check`, Clippy with warnings denied, the generated API schema
   check from the full suite, and 18 explicitly selected wire, DECRQSS,
@@ -138,8 +137,8 @@ pristine worktree rather than assuming this snapshot still applies.
   passed. The full suite pins the published six-field v1 bytes and protocol-23
   fallback for colored rows.
 - `just bench-render-scale` passed all seven profiles. At 15 panes the combined
-  render pipeline was 1.03× the one-pane median for background workspaces and
-  1.02× for active panes; client-shell composition was 1.07× and 0.95×
+  render pipeline was 0.99× the one-pane median for background workspaces and
+  1.04× for active panes; client-shell composition was 1.05× and 0.97×
   respectively. The benchmark also
   exercised upstream's surface reuse, delta, graphics, and populated-agent paths.
 - `just check` stopped at its nextest stage in both trees. The complete
