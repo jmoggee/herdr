@@ -5,27 +5,26 @@ implementation commits on top of `herdrdev/herdr`, plus companion commits that
 only maintain documentation. This file tells an agent what they are, why they
 exist, and what to verify after rebasing onto a newer upstream.
 
-The latest comparison is against upstream `2563803d` on 2026-10-11. Upstream
+The latest comparison is against upstream `dc6b6e5f` on 2026-10-12. Upstream
 still lacks a complete equivalent for every behavior below, so the fork cannot
 yet be retired. Upstream remains on private protocol 22; the fork remains on 23
 because its `CellData` wire layout still carries underline color.
 
-No upstream commits arrived since the 2026-10-10 sync; `origin/master` remains
-at `2563803d`. The most recent upstream batch still consists of seven commits
-after `4dc23bb1`. They preserve literal `+`
-keybindings, reuse unchanged shell-detection text on Unix and Windows, deliver
-quick Escape taps under the macOS Kitty keyboard policy, abandon incomplete
-host-color replies after an idle timeout without dropping later input, map
-non-Latin Ctrl chords to their base keys, and recognize shifted `/` when opening
-goto search in report-all panes.
+Nine upstream commits arrived after `2563803d`. They flush session saves before
+replacing persisted files, reduce interactive pane echo latency, restore host
+keyboard-protocol flags after reconnect, preserve the shape of Hermes plugin
+lists, save before agents exit during macOS shutdown, reject oversized canonical
+macOS input, reject out-of-range workspace numbers, keep SGR pixel-mouse units
+consistent, and confirm before closing the last pane in a workspace.
 
-None implements any of the seven fork behaviors. The changes in `src/pane.rs`
-and `src/pane/agent_detection.rs` reuse prepared detection input but do not cache
-or project a foreground command as a tab label. The host-color timeout in
-`src/pane/terminal.rs` concerns OSC color queries, not DECRQSS SGR replies or SGR
-58. Local `master` already matched `fork/master`, and rebasing onto the unchanged
-upstream was a no-op. The 2026-10-11 run rechecked every local implementation and
-equivalence assessment, so no local implementation was removed.
+None implements any of the seven fork behaviors. The new immediate render path
+changes when accepted pane input is presented, not how tab labels are selected
+or painted. The SGR pixel-mouse work negotiates host mouse-report units; it does
+not carry SGR 58 through `CellData` or augment DECRQSS SGR replies. The close-pane
+confirmation extends the existing client overlay code without changing the
+fork's rename semantics. Local `master` matched `fork/master`, the 38 local
+commits replayed cleanly onto `dc6b6e5f`, and no local implementation was
+removed.
 
 The partial equivalents and integration points found in earlier comparisons
 remain: automatic names use upstream's client-specific title target and bounded
@@ -61,17 +60,12 @@ catastrophically broken or slow, check this before investigating anything else.
 ## Current pristine comparison
 
 The full, non-fail-fast suite was compared against a detached pristine worktree
-at exact upstream `2563803d` on 2026-10-11. The fork executed 4,021 tests: 3,952
-passed, 69 failed, and 14 were skipped. Pristine upstream executed 3,992 tests:
-3,916 passed, 76 failed, and 14 were skipped. Every fork failure also failed in
-pristine upstream, so there were no fork-only failures. Pristine additionally
-failed seven load-sensitive process-lifecycle, session, and client-mode tests.
-
-The fork's `federated_client_starts_without_local_and_survives_its_restart`
-client-mode canary failed both in the complete fork run and in pristine
-upstream. A focused fork rerun also failed on this host. Cross-area and
-multi-client wire canaries passed. This is current baseline evidence, not a
-permanent allowlist; future runs must still recompute the comparison from
+at exact upstream `dc6b6e5f` on 2026-10-12. The fork executed 4,051 tests: 3,983
+passed, 68 failed, and 14 were skipped. Pristine upstream executed 4,022 tests:
+3,954 passed, 68 failed, and 14 were skipped. The sorted failure names matched
+exactly, so there were no fork-only failures. The `client_mode`, `cross_area`,
+and `multi_client` wire canaries all passed. This is current baseline evidence,
+not a permanent allowlist; future runs must still recompute the comparison from
 scratch.
 
 The shared failures are environmental on this machine: process/cwd discovery,
@@ -85,7 +79,6 @@ cli::cases::agents::agent_start_*                            (3)
 machine_api::*                                               (15)
 machine_setup::*                                             (9)
 remote_attach::ssh_check_message_is_visible_while_authentication_waits (1)
-client_mode::federated_client_starts_without_local_and_survives_its_restart (1)
 app::api::layouts::tests::*                                  (4)
 app::api::tabs::tests::tab_create_follows_cached_*           (1)
 app::api::tests::pane_died_respawns_shell_*                  (1)
@@ -129,7 +122,7 @@ Windows lint, and docs recipes separately so that baseline failure does not hide
 their results. If a later run fails elsewhere, compare that exact command in the
 pristine worktree rather than assuming this snapshot still applies.
 
-### Validation at `2563803d` on 2026-10-11
+### Validation at `dc6b6e5f` on 2026-10-12
 
 - `cargo fmt --check`, Clippy with warnings denied, the generated API schema
   check from the full suite, and 18 explicitly selected wire, DECRQSS,
@@ -137,8 +130,8 @@ pristine worktree rather than assuming this snapshot still applies.
   passed. The full suite pins the published six-field v1 bytes and protocol-23
   fallback for colored rows.
 - `just bench-render-scale` passed all seven profiles. At 15 panes the combined
-  render pipeline was 0.99× the one-pane median for background workspaces and
-  1.04× for active panes; client-shell composition was 1.05× and 0.97×
+  render pipeline was 1.01× the one-pane median for background workspaces and
+  1.11× for active panes; client-shell composition was 1.05× and 0.97×
   respectively. The benchmark also
   exercised upstream's surface reuse, delta, graphics, and populated-agent paths.
 - `just check` stopped at its nextest stage in both trees. The complete
