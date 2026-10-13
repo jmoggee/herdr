@@ -5,26 +5,26 @@ implementation commits on top of `herdrdev/herdr`, plus companion commits that
 only maintain documentation. This file tells an agent what they are, why they
 exist, and what to verify after rebasing onto a newer upstream.
 
-The latest comparison is against upstream `dc6b6e5f` on 2026-10-12. Upstream
+The latest comparison is against upstream `241b99cd` on 2026-10-13. Upstream
 still lacks a complete equivalent for every behavior below, so the fork cannot
 yet be retired. Upstream remains on private protocol 22; the fork remains on 23
 because its `CellData` wire layout still carries underline color.
 
-Nine upstream commits arrived after `2563803d`. They flush session saves before
-replacing persisted files, reduce interactive pane echo latency, restore host
-keyboard-protocol flags after reconnect, preserve the shape of Hermes plugin
-lists, save before agents exit during macOS shutdown, reject oversized canonical
-macOS input, reject out-of-range workspace numbers, keep SGR pixel-mouse units
-consistent, and confirm before closing the last pane in a workspace.
+Three upstream commits arrived after `dc6b6e5f`. They detect Codex's startup
+update chooser as blocked, publish the current preview documentation and release
+metadata, and make API-backed CLI commands share their API parameter contracts.
+The command-contract refactor introduces one operation catalog, shared argument
+bindings and response projection, and contract tests; it also makes value
+options accept `--option=value` and rejects invalid arguments before connecting
+to the server.
 
-None implements any of the seven fork behaviors. The new immediate render path
-changes when accepted pane input is presented, not how tab labels are selected
-or painted. The SGR pixel-mouse work negotiates host mouse-report units; it does
-not carry SGR 58 through `CellData` or augment DECRQSS SGR replies. The close-pane
-confirmation extends the existing client overlay code without changing the
-fork's rename semantics. Local `master` matched `fork/master`, the 38 local
-commits replayed cleanly onto `dc6b6e5f`, and no local implementation was
-removed.
+None implements any of the seven fork behaviors. The Codex manifest change is
+agent-status detection, not a tab-label source. The preview still advertises
+protocol 22. The command-contract refactor changes how CLI requests and API
+responses are described and projected, but leaves `Workspace::tab_display_name`,
+tab rendering, terminal cell transport, and DECRQSS behavior unchanged. Local
+`master` matched `fork/master`, all 39 local commits replayed identically onto
+`241b99cd`, and no local implementation was removed.
 
 The partial equivalents and integration points found in earlier comparisons
 remain: automatic names use upstream's client-specific title target and bounded
@@ -60,9 +60,9 @@ catastrophically broken or slow, check this before investigating anything else.
 ## Current pristine comparison
 
 The full, non-fail-fast suite was compared against a detached pristine worktree
-at exact upstream `dc6b6e5f` on 2026-10-12. The fork executed 4,051 tests: 3,983
-passed, 68 failed, and 14 were skipped. Pristine upstream executed 4,022 tests:
-3,954 passed, 68 failed, and 14 were skipped. The sorted failure names matched
+at exact upstream `241b99cd` on 2026-10-13. The fork executed 4,087 tests: 4,019
+passed, 68 failed, and 14 were skipped. Pristine upstream executed 4,058 tests:
+3,990 passed, 68 failed, and 14 were skipped. The sorted failure names matched
 exactly, so there were no fork-only failures. The `client_mode`, `cross_area`,
 and `multi_client` wire canaries all passed. This is current baseline evidence,
 not a permanent allowlist; future runs must still recompute the comparison from
@@ -122,18 +122,18 @@ Windows lint, and docs recipes separately so that baseline failure does not hide
 their results. If a later run fails elsewhere, compare that exact command in the
 pristine worktree rather than assuming this snapshot still applies.
 
-### Validation at `dc6b6e5f` on 2026-10-12
+### Validation at `241b99cd` on 2026-10-13
 
 - `cargo fmt --check`, Clippy with warnings denied, the generated API schema
-  check from the full suite, and 18 explicitly selected wire, DECRQSS,
-  surface-delta, surface-scroll, tab-render, and automatic-name regressions
-  passed. The full suite pins the published six-field v1 bytes and protocol-23
-  fallback for colored rows.
-- `just bench-render-scale` passed all seven profiles. At 15 panes the combined
-  render pipeline was 1.01× the one-pane median for background workspaces and
-  1.11× for active panes; client-shell composition was 1.05× and 0.97×
-  respectively. The benchmark also
-  exercised upstream's surface reuse, delta, graphics, and populated-agent paths.
+  check from the full suite, and 20 explicitly selected wire-digest, DECRQSS,
+  surface-delta, surface-scroll, tab-render, rename, and automatic-name
+  regressions passed. The full suite pins the published six-field v1 bytes and
+  protocol-23 fallback for colored rows; the new upstream CLI contract tests
+  also passed.
+- `just bench-render-scale` was not repeated because the rebase was conflict-free,
+  `git range-diff` showed every local commit replayed identically, and neither
+  the upstream changes nor conflict resolution touched the render/layout hot
+  paths that require a new scale profile.
 - `just check` stopped at its nextest stage in both trees. The complete
   non-fail-fast comparison above establishes that the suite has no fork-only
   failure.
@@ -199,7 +199,7 @@ still has no underline-color field and its ANSI client renderer cannot emit SGR
 change.
 
 **Current protocol state.** `PROTOCOL_VERSION` is **23** in the fork. Upstream
-source, stable 0.9.1, and the current preview all publish protocol 22. Because
+source, stable 0.9.3, and the current preview all publish protocol 22. Because
 the fork's wider `CellData` is incompatible with that published layout, the fork
 owns the bump to 23.
 
@@ -368,10 +368,12 @@ Upstream equivalent: partial only. Upstream now scopes outer window titles to
 each attached client's workspace and tab, and its rename overlays use a shared
 cursor-based `TextEditor`. Its Navigator now matches search terms independently,
 but still searches the label projected by `Workspace::tab_display_name()` rather
-than supplying a new label source. This fork uses those upstream structures.
-Upstream's resolver still returns a custom label or visual position only; it does
-not use the focused pane's OSC title, restore automation after an empty rename,
-or project dynamic names to the other surfaces.
+than supplying a new label source. The shared CLI/API command-contract refactor
+centralizes tab request arguments and response projection, but does not change
+that resolver or add an automatic label source. This fork uses those upstream
+structures. Upstream's resolver still returns a custom label or visual position
+only; it does not use the focused pane's OSC title, restore automation after an
+empty rename, or project dynamic names to the other surfaces.
 
 ### 6. `feat(ui): allow command-based automatic tab names`
 
