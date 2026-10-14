@@ -5,26 +5,29 @@ implementation commits on top of `herdrdev/herdr`, plus companion commits that
 only maintain documentation. This file tells an agent what they are, why they
 exist, and what to verify after rebasing onto a newer upstream.
 
-The latest comparison is against upstream `241b99cd` on 2026-10-13. Upstream
+The latest comparison is against upstream `6521382d` on 2026-10-14. Upstream
 still lacks a complete equivalent for every behavior below, so the fork cannot
 yet be retired. Upstream remains on private protocol 22; the fork remains on 23
 because its `CellData` wire layout still carries underline color.
 
-Three upstream commits arrived after `dc6b6e5f`. They detect Codex's startup
-update chooser as blocked, publish the current preview documentation and release
-metadata, and make API-backed CLI commands share their API parameter contracts.
-The command-contract refactor introduces one operation catalog, shared argument
-bindings and response projection, and contract tests; it also makes value
-options accept `--option=value` and rejects invalid arguments before connecting
-to the server.
+Eight upstream commits arrived after `241b99cd`. Six harden endpoint and SSH
+machine connections: selecting a reconnecting machine retries immediately,
+handshakes have response deadlines, busy servers receive a bounded readiness
+window, cancelled attempts clean up their bridge processes, sleeping clients
+recover promptly after wake, and blocked shared SSH connections can be
+re-established. One commit detects blocked questions in named Claude sessions,
+and the v0.9.4 release commit publishes the stable metadata, documentation
+snapshot, changelog, and stable Herdr skill.
 
 None implements any of the seven fork behaviors. The Codex manifest change is
-agent-status detection, not a tab-label source. The preview still advertises
-protocol 22. The command-contract refactor changes how CLI requests and API
-responses are described and projected, but leaves `Workspace::tab_display_name`,
-tab rendering, terminal cell transport, and DECRQSS behavior unchanged. Local
-`master` matched `fork/master`, all 39 local commits replayed identically onto
-`241b99cd`, and no local implementation was removed.
+now joined by the Claude manifest change, but both are agent-status detection,
+not tab-label sources. Stable v0.9.4 and the current preview still advertise
+protocol 22. The endpoint work changes machine connection supervision,
+handshakes, bridge cleanup, wake handling, and SSH reuse; it leaves
+`Workspace::tab_display_name`, tab rendering, terminal cell transport, and
+DECRQSS behavior unchanged. Local `master` matched `fork/master`, all 40
+pre-existing local commits replayed identically onto `6521382d`, and no local
+implementation was removed.
 
 The partial equivalents and integration points found in earlier comparisons
 remain: automatic names use upstream's client-specific title target and bounded
@@ -60,9 +63,9 @@ catastrophically broken or slow, check this before investigating anything else.
 ## Current pristine comparison
 
 The full, non-fail-fast suite was compared against a detached pristine worktree
-at exact upstream `241b99cd` on 2026-10-13. The fork executed 4,087 tests: 4,019
-passed, 68 failed, and 14 were skipped. Pristine upstream executed 4,058 tests:
-3,990 passed, 68 failed, and 14 were skipped. The sorted failure names matched
+at exact upstream `6521382d` on 2026-10-14. The fork executed 4,114 tests: 4,044
+passed, 70 failed, and 16 were skipped. Pristine upstream executed 4,085 tests:
+4,015 passed, 70 failed, and 16 were skipped. The sorted failure names matched
 exactly, so there were no fork-only failures. The `client_mode`, `cross_area`,
 and `multi_client` wire canaries all passed. This is current baseline evidence,
 not a permanent allowlist; future runs must still recompute the comparison from
@@ -76,7 +79,7 @@ surface, the shared failures were:
 ```
 api_ping::*cwd*                                              (2)
 cli::cases::agents::agent_start_*                            (3)
-machine_api::*                                               (15)
+machine_api::*                                               (17)
 machine_setup::*                                             (9)
 remote_attach::ssh_check_message_is_visible_while_authentication_waits (1)
 app::api::layouts::tests::*                                  (4)
@@ -122,14 +125,15 @@ Windows lint, and docs recipes separately so that baseline failure does not hide
 their results. If a later run fails elsewhere, compare that exact command in the
 pristine worktree rather than assuming this snapshot still applies.
 
-### Validation at `241b99cd` on 2026-10-13
+### Validation at `6521382d` on 2026-10-14
 
 - `cargo fmt --check`, Clippy with warnings denied, the generated API schema
   check from the full suite, and 20 explicitly selected wire-digest, DECRQSS,
   surface-delta, surface-scroll, tab-render, rename, and automatic-name
   regressions passed. The full suite pins the published six-field v1 bytes and
-  protocol-23 fallback for colored rows; the new upstream CLI contract tests
-  also passed.
+  protocol-23 fallback for colored rows; the new upstream endpoint recovery and
+  connection lifecycle tests also passed except for the same environment-bound
+  machine fixtures that fail in pristine upstream.
 - `just bench-render-scale` was not repeated because the rebase was conflict-free,
   `git range-diff` showed every local commit replayed identically, and neither
   the upstream changes nor conflict resolution touched the render/layout hot
@@ -199,7 +203,7 @@ still has no underline-color field and its ANSI client renderer cannot emit SGR
 change.
 
 **Current protocol state.** `PROTOCOL_VERSION` is **23** in the fork. Upstream
-source, stable 0.9.3, and the current preview all publish protocol 22. Because
+source, stable 0.9.4, and the current preview all publish protocol 22. Because
 the fork's wider `CellData` is incompatible with that published layout, the fork
 owns the bump to 23.
 
