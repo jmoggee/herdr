@@ -5,28 +5,28 @@ implementation commits on top of `herdrdev/herdr`, plus companion commits that
 only maintain documentation. This file tells an agent what they are, why they
 exist, and what to verify after rebasing onto a newer upstream.
 
-The latest comparison is against upstream `6521382d` on 2026-10-14. Upstream
+The latest comparison is against upstream `916fcf8d` on 2026-10-15. Upstream
 still lacks a complete equivalent for every behavior below, so the fork cannot
 yet be retired. Upstream remains on private protocol 22; the fork remains on 23
 because its `CellData` wire layout still carries underline color.
 
-Eight upstream commits arrived after `241b99cd`. Six harden endpoint and SSH
-machine connections: selecting a reconnecting machine retries immediately,
-handshakes have response deadlines, busy servers receive a bounded readiness
-window, cancelled attempts clean up their bridge processes, sleeping clients
-recover promptly after wake, and blocked shared SSH connections can be
-re-established. One commit detects blocked questions in named Claude sessions,
-and the v0.9.4 release commit publishes the stable metadata, documentation
-snapshot, changelog, and stable Herdr skill.
+Ten upstream commits arrived after `6521382d`. Native Windows SSH hosts are now
+probed before `/bin/sh`, PowerShell remote setup suppresses progress CLIXML,
+Windows hook input is decoded as UTF-8, and Windows executable lookup ignores
+directories on `PATH`. Kitty terminals now run prefix and navigation bindings
+when plain text arrives while Herdr owns input. Codex integrations retain only
+session reporting and rely on terminal detection for turn status. Two test-only
+commits widen loaded-runner timing budgets, preview documentation was refreshed,
+and the v0.9.5 release commit publishes stable metadata and documentation.
 
-None implements any of the seven fork behaviors. The Codex manifest change is
-now joined by the Claude manifest change, but both are agent-status detection,
-not tab-label sources. Stable v0.9.4 and the current preview still advertise
-protocol 22. The endpoint work changes machine connection supervision,
-handshakes, bridge cleanup, wake handling, and SSH reuse; it leaves
+None implements any of the seven fork behaviors. The Codex integration change
+removes turn-status reporting rather than adding a tab-label source; the fork's
+command-name cache and process probing are unchanged. Stable v0.9.5 and the
+current preview still advertise protocol 22. The remote, input, integration,
+and test changes leave
 `Workspace::tab_display_name`, tab rendering, terminal cell transport, and
-DECRQSS behavior unchanged. Local `master` matched `fork/master`, all 40
-pre-existing local commits replayed identically onto `6521382d`, and no local
+DECRQSS behavior unchanged. Local `master` matched `fork/master`, all 41
+pre-existing local commits replayed identically onto `916fcf8d`, and no local
 implementation was removed.
 
 The partial equivalents and integration points found in earlier comparisons
@@ -63,13 +63,13 @@ catastrophically broken or slow, check this before investigating anything else.
 ## Current pristine comparison
 
 The full, non-fail-fast suite was compared against a detached pristine worktree
-at exact upstream `6521382d` on 2026-10-14. The fork executed 4,114 tests: 4,044
-passed, 70 failed, and 16 were skipped. Pristine upstream executed 4,085 tests:
-4,015 passed, 70 failed, and 16 were skipped. The sorted failure names matched
-exactly, so there were no fork-only failures. The `client_mode`, `cross_area`,
-and `multi_client` wire canaries all passed. This is current baseline evidence,
-not a permanent allowlist; future runs must still recompute the comparison from
-scratch.
+at exact upstream `916fcf8d` on 2026-10-15. The fork executed 4,122 tests: 4,051
+passed, 71 failed, and 16 were skipped. Pristine upstream executed 4,093 tests:
+4,022 passed, 71 failed, and 16 were skipped. The sorted JUnit failure names
+matched exactly, so there were no fork-only failures. The `client_mode`,
+`cross_area`, and `multi_client` wire canaries all passed. This is current
+baseline evidence, not a permanent allowlist; future runs must still recompute
+the comparison from scratch.
 
 The shared failures are environmental on this machine: process/cwd discovery,
 git worktree setup, clipboard access, PTY spawning, headless shell startup,
@@ -94,6 +94,7 @@ integration::tests::{install_hermes_*,uninstall_hermes_*}     (10)
 pane::terminal::migration_tests::*ed3_for_droid*              (1)
 platform::linux::tests::failed_wl_copy_uses_x11_fallback      (1)
 pty::backend::unix::tests::portable_pty_setup_*               (1)
+server_headless::server_survives_hangup_and_logs_why_it_stops (1)
 server::headless::tests::*                                    (2)
 ```
 
@@ -125,14 +126,14 @@ Windows lint, and docs recipes separately so that baseline failure does not hide
 their results. If a later run fails elsewhere, compare that exact command in the
 pristine worktree rather than assuming this snapshot still applies.
 
-### Validation at `6521382d` on 2026-10-14
+### Validation at `916fcf8d` on 2026-10-15
 
 - `cargo fmt --check`, Clippy with warnings denied, the generated API schema
-  check from the full suite, and 20 explicitly selected wire-digest, DECRQSS,
-  surface-delta, surface-scroll, tab-render, rename, and automatic-name
-  regressions passed. The full suite pins the published six-field v1 bytes and
-  protocol-23 fallback for colored rows; the new upstream endpoint recovery and
-  connection lifecycle tests also passed except for the same environment-bound
+  check, and 19 explicitly selected underline-color, DECRQSS, surface-delta,
+  surface-scroll, tab-render, rename, and automatic-name regressions passed.
+  The full suite pins the published six-field v1 bytes and protocol-23 fallback
+  for colored rows; the new upstream Windows remote, Kitty input, and Codex
+  integration tests passed except for the same environment-bound remote and
   machine fixtures that fail in pristine upstream.
 - `just bench-render-scale` was not repeated because the rebase was conflict-free,
   `git range-diff` showed every local commit replayed identically, and neither
