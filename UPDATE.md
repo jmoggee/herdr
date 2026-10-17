@@ -5,26 +5,21 @@ implementation commits on top of `herdrdev/herdr`, plus companion commits that
 only maintain documentation. This file tells an agent what they are, why they
 exist, and what to verify after rebasing onto a newer upstream.
 
-The latest comparison is against upstream `143bf5fd` on 2026-10-16. Upstream
+The latest comparison is against upstream `143bf5fd` on 2026-10-17. Upstream
 still lacks a complete equivalent for every behavior below, so the fork cannot
 yet be retired. Upstream remains on private protocol 22; the fork remains on 23
 because its `CellData` wire layout still carries underline color.
 
-Four upstream commits arrived after `916fcf8d`. POSIX machine scripts now cross
-Windows OpenSSH login-shell quoting intact by travelling as base64 and running
-through `/bin/sh -s`. A tracked libghostty-vt patch prevents a cursor move that
-carries a hyperlink onto a full page from crashing the server. On macOS, the
-server starts through launchd so it survives the terminal app that launched it.
-The client resize loop now treats a momentary zero-sized terminal grid as a
-transient sample and keeps polling.
-
-None implements any of the seven fork behaviors. Stable v0.9.5 and the current
-preview still advertise protocol 22. The remote transport, vendored terminal,
-server-launch, and client-resize changes leave `Workspace::tab_display_name`,
-tab rendering, terminal cell transport, foreground-command tracking, and
-DECRQSS behavior unchanged. Local `master` matched `fork/master`; all 42
-pre-existing local commits replayed identically onto `143bf5fd`, and no local
-implementation was removed.
+No upstream commits arrived after `143bf5fd` since the 2026-10-16 run, so there
+is no new upstream functionality to absorb. The latest upstream functionality
+remains the POSIX machine-script quoting fix, the tracked libghostty-vt
+full-page hyperlink crash patch, launchd-backed macOS server startup, and
+continued resize polling after a transient zero-sized grid. None implements any
+of the seven fork behaviors. Stable v0.9.5 and the current preview still
+advertise protocol 22. Local `master` matched `fork/master`, the required rebase
+onto `origin/master` was a no-op, all 43 pre-existing local commits remained
+unchanged, and no local implementation was removed. Every equivalence assessment
+below was reviewed and remains current.
 
 The partial equivalents and integration points found in earlier comparisons
 remain: automatic names use upstream's client-specific title target and bounded
@@ -60,13 +55,15 @@ catastrophically broken or slow, check this before investigating anything else.
 ## Current pristine comparison
 
 The full, non-fail-fast suite was compared against a detached pristine worktree
-at exact upstream `143bf5fd` on 2026-10-16. The fork executed 4,126 tests: 4,056
+at exact upstream `143bf5fd` on 2026-10-17. The fork executed 4,126 tests: 4,056
 passed, 70 failed, and 16 were skipped. Pristine upstream executed 4,097 tests:
-4,027 passed, 70 failed, and 16 were skipped. The sorted JUnit failure names
-matched exactly, so there were no fork-only failures. The `client_mode`,
-`cross_area`, and `multi_client` wire canaries all passed. This is current
-baseline evidence, not a permanent allowlist; future runs must still recompute
-the comparison from scratch.
+4,026 passed, 71 failed, and 16 were skipped. The fork's sorted JUnit failure set
+was a strict subset of pristine upstream's, so there were no fork-only failures.
+Upstream alone failed
+`client_mode::federated_client_starts_without_local_and_survives_its_restart`;
+the fork passed it and every other `client_mode`, `cross_area`, and
+`multi_client` wire canary. This is current baseline evidence, not a permanent
+allowlist; future runs must still recompute the comparison from scratch.
 
 The shared failures are environmental on this machine: process/cwd discovery,
 git worktree setup, clipboard access, PTY spawning, headless shell startup,
@@ -122,22 +119,21 @@ Windows lint, and docs recipes separately so that baseline failure does not hide
 their results. If a later run fails elsewhere, compare that exact command in the
 pristine worktree rather than assuming this snapshot still applies.
 
-### Validation at `143bf5fd` on 2026-10-16
+### Validation at `143bf5fd` on 2026-10-17
 
 - `cargo fmt --check`, Clippy with warnings denied, the generated API schema
   check, and 21 explicitly selected underline-color, DECRQSS, surface-delta,
   surface-scroll, tab-render, rename, and automatic-name regressions passed.
   The full suite pins the published six-field v1 bytes and protocol-23 fallback
-  for colored rows. The new upstream resize, hyperlink, launchd, and remote
-  transport regressions passed except for the same environment-bound remote and
-  machine fixtures that fail in pristine upstream.
-- `just bench-render-scale` was not repeated because the rebase was conflict-free,
-  `git range-diff` showed every local commit replayed identically, and neither
-  the upstream changes nor conflict resolution touched the render/layout hot
-  paths that require a new scale profile.
+  for colored rows. No upstream commits arrived during this run, and all seven
+  local behavior/equivalence assessments remain unchanged.
+- `just bench-render-scale` was not repeated because the rebase reported the
+  branch already up to date; no upstream or fork render/layout code changed, so
+  there was no widened hot path to profile.
 - `just check` stopped at its nextest stage in both trees. The complete
   non-fail-fast comparison above establishes that the suite has no fork-only
-  failure.
+  failure. Pristine upstream had the one additional `client_mode` failure named
+  above.
 - `just maintenance-test` ran 150 tests and had the same single
   missing-`openssl` host failure in both trees. `just integration-assets-test`
   and `just docs-contract-test` could not start in either tree because `bun` is
