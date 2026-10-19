@@ -5,19 +5,19 @@ implementation commits on top of `herdrdev/herdr`, plus companion commits that
 only maintain documentation. This file tells an agent what they are, why they
 exist, and what to verify after rebasing onto a newer upstream.
 
-The latest comparison is against upstream `143bf5fd` on 2026-10-18. Upstream
+The latest comparison is against upstream `143bf5fd` on 2026-10-19. Upstream
 still lacks a complete equivalent for every behavior below, so the fork cannot
 yet be retired. Upstream remains on private protocol 22; the fork remains on 23
 because its `CellData` wire layout still carries underline color.
 
-No upstream commits arrived after `143bf5fd` since the 2026-10-17 run, so there
+No upstream commits arrived after `143bf5fd` since the 2026-10-18 run, so there
 is no new upstream functionality to absorb. The latest upstream functionality
 remains the POSIX machine-script quoting fix, the tracked libghostty-vt
 full-page hyperlink crash patch, launchd-backed macOS server startup, and
 continued resize polling after a transient zero-sized grid. None implements any
 of the seven fork behaviors. Stable v0.9.5 and the current preview still
 advertise protocol 22. Local `master` matched `fork/master`, the required rebase
-onto `origin/master` was a no-op, all 44 pre-existing local commits remained
+onto `origin/master` was a no-op, all 45 pre-existing local commits remained
 unchanged, and no local implementation was removed. Every equivalence assessment
 below was reviewed and remains current.
 
@@ -55,7 +55,7 @@ catastrophically broken or slow, check this before investigating anything else.
 ## Current pristine comparison
 
 The full, non-fail-fast suite was compared against a detached pristine worktree
-at exact upstream `143bf5fd` on 2026-10-18. The fork executed 4,126 tests: 4,056
+at exact upstream `143bf5fd` on 2026-10-19. The fork executed 4,126 tests: 4,056
 passed, 70 failed, and 16 were skipped. Pristine upstream executed 4,097 tests:
 4,027 passed, 70 failed, and 16 were skipped. The freshly sorted failure sets
 were identical, so there were no fork-only failures. Every `client_mode`,
@@ -117,10 +117,10 @@ Windows lint, and docs recipes separately so that baseline failure does not hide
 their results. If a later run fails elsewhere, compare that exact command in the
 pristine worktree rather than assuming this snapshot still applies.
 
-### Validation at `143bf5fd` on 2026-10-18
+### Validation at `143bf5fd` on 2026-10-19
 
 - `cargo fmt --check`, Clippy with warnings denied, the generated API schema
-  check, and 21 explicitly selected underline-color, DECRQSS, surface-delta,
+  check, and 27 explicitly selected underline-color, DECRQSS, surface-delta,
   surface-scroll, tab-render, rename, and automatic-name regressions passed.
   The full suite pins the published six-field v1 bytes and protocol-23 fallback
   for colored rows. No upstream commits arrived during this run, and all seven
@@ -193,7 +193,7 @@ still has no underline-color field and its ANSI client renderer cannot emit SGR
 change.
 
 **Current protocol state.** `PROTOCOL_VERSION` is **23** in the fork. Upstream
-source, stable 0.9.4, and the current preview all publish protocol 22. Because
+source, stable 0.9.5, and the current preview all publish protocol 22. Because
 the fork's wider `CellData` is incompatible with that published layout, the fork
 owns the bump to 23.
 
