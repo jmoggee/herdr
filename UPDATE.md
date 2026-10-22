@@ -5,21 +5,22 @@ implementation commits on top of `herdrdev/herdr`, plus companion commits that
 only maintain documentation. This file tells an agent what they are, why they
 exist, and what to verify after rebasing onto a newer upstream.
 
-The latest comparison is against upstream `143bf5fd` on 2026-10-20. Upstream
+The latest comparison is against upstream `5bd900d8` on 2026-10-22. Upstream
 still lacks a complete equivalent for every behavior below, so the fork cannot
 yet be retired. Upstream remains on private protocol 22; the fork remains on 23
 because its `CellData` wire layout still carries underline color.
 
-No upstream commits arrived after `143bf5fd` since the 2026-10-19 run, so there
-is no new upstream functionality to absorb. The latest upstream functionality
-remains the POSIX machine-script quoting fix, the tracked libghostty-vt
-full-page hyperlink crash patch, launchd-backed macOS server startup, and
-continued resize polling after a transient zero-sized grid. None implements any
-of the seven fork behaviors. Stable v0.9.5 and the current preview still
-advertise protocol 22. Local `master` matched `fork/master`, the required rebase
-onto `origin/master` was a no-op, all 46 pre-existing local commits remained
-unchanged, and no local implementation was removed. Every equivalence assessment
-below was reviewed and remains current.
+Three upstream commits arrived after `143bf5fd`. Windows private IPC now uses
+64-KiB named-pipe buffers so a burst of SSH output cannot serialize behind
+reader polling and delay typing. The plugin worker lease test now uses the
+native test binary instead of PowerShell, and the Windows cwd and headless
+server shutdown tests now wait for actual command or event-loop readiness.
+These changes improve Windows runtime behavior and cross-platform test
+reliability, but none implements any of the seven fork behaviors. Stable v0.9.5
+and the current preview still advertise protocol 22. Local `master` matched
+`fork/master`; all 47 pre-existing local commits rebased patch-equivalently onto
+`origin/master`, and no local implementation was removed. Every equivalence
+assessment below was reviewed and remains current.
 
 The partial equivalents and integration points found in earlier comparisons
 remain: automatic names use upstream's client-specific title target and bounded
@@ -55,24 +56,18 @@ catastrophically broken or slow, check this before investigating anything else.
 ## Current pristine comparison
 
 The full, non-fail-fast suite was compared against a detached pristine worktree
-at exact upstream `143bf5fd` on 2026-10-20. The fork executed 4,126 tests: 4,056
-passed, 70 failed, and 16 were skipped. Pristine upstream executed 4,097 tests:
-4,028 passed, 69 failed, and 16 were skipped. The freshly sorted full-suite
-failure sets differed only because
-`primary_screen_replay_honors_ed3_for_droid_at_chunk_boundaries` passed once in
-the pristine run while timing out in the fork. An immediate isolated comparison
-then failed that exact test three consecutive times in each tree with the same
-`Droid foreground job not ready` result. It is a process-readiness race already
-present upstream, not a reproducible fork-only failure. Every `client_mode`,
-`cross_area`, and `multi_client` wire canary passed in both trees. This is
-current baseline evidence, not a permanent allowlist; future runs must still
-recompute the comparison from scratch.
+at exact upstream `5bd900d8` on 2026-10-22. The fork executed 4,126 tests: 4,056
+passed, 70 failed, and 17 were skipped. Pristine upstream executed 4,097 tests:
+4,027 passed, 70 failed, and 17 were skipped. The freshly sorted full-suite
+failure sets were identical. Every `client_mode`, `cross_area`, and
+`multi_client` wire canary passed in both trees. This is current baseline
+evidence, not a permanent allowlist; future runs must still recompute the
+comparison from scratch.
 
 The reproducible failures are environmental on this machine: process/cwd
 discovery, git worktree setup, clipboard access, PTY spawning, headless shell
 startup, agent startup, machine-bridge fixtures, and live handoff. Grouped by
-test surface, the shared failures plus the independently reproduced Droid race
-were:
+test surface, the shared failures were:
 
 ```
 api_ping::*cwd*                                              (2)
@@ -123,22 +118,21 @@ Windows lint, and docs recipes separately so that baseline failure does not hide
 their results. If a later run fails elsewhere, compare that exact command in the
 pristine worktree rather than assuming this snapshot still applies.
 
-### Validation at `143bf5fd` on 2026-10-20
+### Validation at `5bd900d8` on 2026-10-22
 
 - `cargo fmt --check`, Clippy with warnings denied, the generated API schema
-  check, and 27 explicitly selected underline-color, DECRQSS, surface-delta,
+  check, and 29 explicitly selected underline-color, DECRQSS, surface-delta,
   surface-scroll, tab-render, rename, and automatic-name regressions passed.
   The full suite pins the published six-field v1 bytes and protocol-23 fallback
-  for colored rows. No upstream commits arrived during this run, and all seven
-  local behavior/equivalence assessments remain unchanged.
-- `just bench-render-scale` was not repeated because the rebase reported the
-  branch already up to date; no upstream or fork render/layout code changed, so
-  there was no widened hot path to profile.
+  for colored rows. All seven local behavior/equivalence assessments remain
+  unchanged after reviewing the three new upstream commits.
+- `just bench-render-scale` was not repeated because the rebase was conflict-free
+  and patch-equivalent, while the new upstream work only changed Windows IPC and
+  test synchronization; no render or layout hot path changed.
 - `just check` stopped at its nextest stage in both trees on the same two
-  `api_ping` cwd failures. The complete non-fail-fast comparison above had 70
-  fork failures and 69 pristine failures because the Droid migration test won
-  its readiness race once in pristine; three isolated reruns in each tree all
-  failed identically, so the run found no reproducible fork-only failure.
+  `api_ping` cwd failures. The complete non-fail-fast comparison above produced
+  the same 70-test failure set in both trees, so the run found no fork-only
+  failure.
 - `just maintenance-test` ran 150 tests and had the same single
   missing-`openssl` host failure in both trees. `just integration-assets-test`
   and `just docs-contract-test` could not start in either tree because `bun` is
