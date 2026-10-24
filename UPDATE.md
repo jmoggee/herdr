@@ -5,18 +5,27 @@ implementation commits on top of `herdrdev/herdr`, plus companion commits that
 only maintain documentation. This file tells an agent what they are, why they
 exist, and what to verify after rebasing onto a newer upstream.
 
-The latest comparison is against upstream `5bd900d8` on 2026-10-23. Upstream
+The latest comparison is against upstream `5608de06` on 2026-10-24. Upstream
 still lacks a complete equivalent for every behavior below, so the fork cannot
 yet be retired. Upstream remains on private protocol 22; the fork remains on 23
 because its `CellData` wire layout still carries underline color.
 
-No upstream commits arrived after the previous run: freshly fetched
-`origin/master` remains `5bd900d8`. Therefore there is no new upstream
-functionality to absorb in this run. Stable v0.9.5 and the current preview still
-advertise protocol 22. Local `master` and `fork/master` both started at
-`539d55ab`; rebasing onto `origin/master` was a no-op, and no local
-implementation was removed. The final diff and every equivalence assessment
-below were reviewed and remain current.
+Seven upstream commits arrived after the previous run. They let preview-channel
+clients install a newer stable release without leaving the preview preference,
+preserve slow servers' sockets across connect timeouts, keep saved layouts when
+panes die during host shutdown, delay pane appearance changes until the matching
+background arrives, recognize Hermes behind its newer installer launcher,
+remove the obsolete `CLAUDE.md` symlink, and replace a fixed hook-test delay with
+an exit wait. The appearance work touches adjacent terminal propagation, but it
+does not transport underline color or complete DECRQSS SGR replies; none of the
+seven commits provides a complete equivalent for a fork behavior. Stable v0.9.5
+and the current preview still advertise protocol 22.
+
+Local `master` and `fork/master` both started at `7a1003a6`. All 49 pre-existing
+fork commits rebased without conflicts onto `5608de06`; `git range-diff`
+classified every replayed patch as identical. No local implementation became
+redundant or was removed. The final diff and every equivalence assessment below
+were reviewed and remain current.
 
 The partial equivalents and integration points found in earlier comparisons
 remain: automatic names use upstream's client-specific title target and bounded
@@ -52,9 +61,9 @@ catastrophically broken or slow, check this before investigating anything else.
 ## Current pristine comparison
 
 The full, non-fail-fast suite was compared against a detached pristine worktree
-at exact upstream `5bd900d8` on 2026-10-23. The fork executed 4,126 tests: 4,056
-passed, 70 failed, and 17 were skipped. Pristine upstream executed 4,097 tests:
-4,027 passed, 70 failed, and 17 were skipped. The freshly sorted full-suite
+at exact upstream `5608de06` on 2026-10-24. The fork executed 4,145 tests: 4,075
+passed, 70 failed, and 17 were skipped. Pristine upstream executed 4,116 tests:
+4,046 passed, 70 failed, and 17 were skipped. The freshly sorted full-suite
 failure sets were identical. Every `client_mode`, `cross_area`, and
 `multi_client` wire canary passed in both trees. This is current baseline
 evidence, not a permanent allowlist; future runs must still recompute the
@@ -114,21 +123,27 @@ Windows lint, and docs recipes separately so that baseline failure does not hide
 their results. If a later run fails elsewhere, compare that exact command in the
 pristine worktree rather than assuming this snapshot still applies.
 
-### Validation at `5bd900d8` on 2026-10-23
+### Validation at `5608de06` on 2026-10-24
 
 - `cargo fmt --check`, Clippy with warnings denied, the generated API schema
-  check, and 31 explicitly selected underline-color, DECRQSS, surface-delta,
-  surface-scroll, tab-render, rename, and automatic-name regressions passed.
-  The full suite pins the published six-field v1 bytes and protocol-23 fallback
-  for colored rows. All seven local behavior/equivalence assessments remain
-  unchanged after reviewing the authoritative diff; upstream itself did not
-  change since the preceding comparison.
-- `just bench-render-scale` was not repeated because the rebase was a no-op and
-  no render or layout hot path changed.
+  check, and 28 explicitly selected underline-color, DECRQSS, surface-delta,
+  tab-render, rename, and automatic-name regressions passed. The full suite pins
+  the published six-field v1 bytes, surface-scroll behavior, and protocol-23
+  fallback for colored rows. All seven local behavior/equivalence assessments
+  remain unchanged after reviewing the authoritative diff and the seven new
+  upstream commits.
+- `just bench-render-scale` was not repeated because the rebase replayed every
+  fork patch identically without conflict resolution or a render or layout
+  hot-path change.
 - `just check` stopped at its nextest stage in both trees on the same two
   `api_ping` cwd failures. The complete non-fail-fast comparison above produced
   the same 70-test failure set in both trees, so the run found no fork-only
-  failure.
+  failure. An initial loaded fork run also saw transient failures in one
+  `agent_start` case and the federated-client restart case. The first passed
+  immediately in both trees; the second passed at the old fork tip, at every
+  cumulative upstream boundary, in the exact final disposable tree, and in
+  three consecutive final-tree reruns. Neither appeared in the fresh paired
+  70-test comparison and neither is part of the baseline.
 - `just maintenance-test` ran 150 tests and had the same single
   missing-`openssl` host failure in both trees. `just integration-assets-test`
   and `just docs-contract-test` could not start in either tree because `bun` is
