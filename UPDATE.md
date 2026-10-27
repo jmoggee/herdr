@@ -5,28 +5,28 @@ implementation commits on top of `herdrdev/herdr`, plus companion commits that
 only maintain documentation. This file tells an agent what they are, why they
 exist, and what to verify after rebasing onto a newer upstream.
 
-The latest comparison is against upstream `5608de06` on 2026-10-25. Upstream
+The latest comparison is against upstream `2713feb5` on 2026-10-27. Upstream
 still lacks a complete equivalent for every behavior below, so the fork cannot
 yet be retired. Upstream remains on private protocol 22; the fork remains on 23
 because its `CellData` wire layout still carries underline color.
 
-No upstream commits arrived after the previous run. The newest upstream
-functionality therefore remains the seven commits already assessed on
-2026-10-24: preview-channel clients can install a newer stable release without
-leaving the preview preference; slow servers keep their sockets across connect
-timeouts; host shutdown keeps saved layouts when panes die; pane appearance
-changes wait for the matching background; Hermes is recognized behind its newer
-installer launcher; the obsolete `CLAUDE.md` symlink is gone; and hook tests wait
-for process exit instead of a fixed delay. The appearance work touches adjacent
-terminal propagation, but it does not transport underline color or complete
-DECRQSS SGR replies. Stable v0.9.5 and the current preview still advertise
-protocol 22.
+Three upstream commits arrived after the previous run. Linux clipboard reads
+and writes now share a bounded deadline, kill failed or hung helper process
+groups, preserve successful detached clipboard owners, and show copy feedback
+only after dispatch succeeds. Remote attach now escapes the ready marker's
+newlines so tcsh login shells interpret it correctly. OpenCode and Kilo
+integration installation now follows `OPENCODE_CONFIG_DIR` and
+`XDG_CONFIG_HOME`, with literal-path and precedence tests. These fixes are
+orthogonal to the seven fork behaviors: they do not transport underline color,
+augment DECRQSS replies, or add the fork's tab naming and theming policies.
+Stable v0.9.5 and the current preview still advertise protocol 22.
 
-Local `master` and `fork/master` both started at `4ac5b48f`. Reconciling them was
-a no-op, and `git rebase origin/master` reported that all 50 pre-existing fork
-commits were already based on `5608de06`. No local implementation became
-redundant or was removed. The final diff and every equivalence assessment below
-were reviewed and remain current.
+Local `master` and `fork/master` both started at `53162b54`. Reconciling them was
+a no-op. All 51 pre-existing fork commits rebased without conflict onto
+`2713feb5`, and `git range-diff` matched every old commit to its replayed commit
+without a patch change. No local implementation became redundant or was
+removed. The final diff and every equivalence assessment below were reviewed
+and remain current.
 
 The partial equivalents and integration points found in earlier comparisons
 remain: automatic names use upstream's client-specific title target and bounded
@@ -62,9 +62,9 @@ catastrophically broken or slow, check this before investigating anything else.
 ## Current pristine comparison
 
 The full, non-fail-fast suite was compared against a detached pristine worktree
-at exact upstream `5608de06` on 2026-10-25. The fork executed 4,145 tests: 4,075
-passed, 70 failed, and 17 were skipped. Pristine upstream executed 4,116 tests:
-4,046 passed, 70 failed, and 17 were skipped. The freshly sorted full-suite
+at exact upstream `2713feb5` on 2026-10-27. The fork executed 4,157 tests: 4,087
+passed, 70 failed, and 17 were skipped. Pristine upstream executed 4,128 tests:
+4,058 passed, 70 failed, and 17 were skipped. The freshly sorted full-suite
 failure sets were identical. Every `client_mode`, `cross_area`, and
 `multi_client` wire canary passed in both trees. This is current baseline
 evidence, not a permanent allowlist; future runs must still recompute the
@@ -124,28 +124,30 @@ Windows lint, and docs recipes separately so that baseline failure does not hide
 their results. If a later run fails elsewhere, compare that exact command in the
 pristine worktree rather than assuming this snapshot still applies.
 
-### Validation at `5608de06` on 2026-10-25
+### Validation at `2713feb5` on 2026-10-27
 
-- `cargo fmt --check`, Clippy with warnings denied, the generated API schema
-  check, and 32 explicitly selected underline-color, DECRQSS, surface-delta,
-  tab-render, rename, and automatic-name regressions passed. The full suite pins
-  the published six-field v1 bytes, surface-scroll behavior, and protocol-23
-  fallback for colored rows. All seven local behavior/equivalence assessments
-  remain unchanged after reviewing the authoritative diff and confirming that
-  upstream had not advanced.
-- `just bench-render-scale` was not repeated because the no-op rebase involved
-  no conflict resolution and no render or layout hot-path change.
+- `cargo fmt --check`, Clippy with warnings denied, and 19 explicitly selected
+  underline-color, DECRQSS, surface-delta, tab-render, rename, automatic-name,
+  and client-title regressions passed. The full suite pins the generated API
+  schema, published six-field v1 bytes, surface-scroll behavior, and protocol-23
+  fallback for colored rows. Configuration-reference and docs-translation
+  maintenance tests also passed. All seven local behavior/equivalence
+  assessments remain unchanged after reviewing the authoritative diff and the
+  three new upstream commits.
+- `just bench-render-scale` was not repeated because the rebase had no conflicts,
+  patch changes, or render/layout hot-path adaptation.
 - `just check` stopped at its nextest stage in both trees on the same two
   `api_ping` cwd failures. The complete non-fail-fast comparison above produced
   the same 70-test failure set in both trees, so the run found no fork-only
-  failure. The first fork pass also saw the unchanged upstream PTY race
-  `foreground_job_detects_shell_running_command`; it passed immediately, passed
-  ten more consecutive reruns, and did not recur in the final complete fork
-  pass. It is not part of the paired baseline.
+  failure. A repeated mechanical comparison found the same 70 fork failures and
+  one additional pristine-only occurrence of the upstream PTY race
+  `foreground_job_detects_shell_running_command`; that test then passed ten
+  consecutive pristine reruns. It is not part of the shared baseline.
 - `just maintenance-test` ran 150 tests and had the same single
   missing-`openssl` host failure in both trees. `just integration-assets-test`
-  and `just docs-contract-test` could not start in either tree because `bun` is
-  absent; `just windows-lint` could not start in either tree because this machine
+  and `just docs-contract-test`, plus the release-workflow part of
+  `just maintenance-test`, could not start in either tree because `bun` is
+  absent. `just windows-lint` could not start in either tree because this machine
   has no Windows SDK/Zig libc configuration. These are toolchain baselines, not
   fork exceptions, and must be rechecked from scratch on the next sync.
   `just ui-hot-path-architecture-test` passed all six tests in both trees.
