@@ -5,28 +5,25 @@ implementation commits on top of `herdrdev/herdr`, plus companion commits that
 only maintain documentation. This file tells an agent what they are, why they
 exist, and what to verify after rebasing onto a newer upstream.
 
-The latest comparison is against upstream `2713feb5` on 2026-10-27. Upstream
+The latest comparison is against upstream `2713feb5` on 2026-10-28. Upstream
 still lacks a complete equivalent for every behavior below, so the fork cannot
 yet be retired. Upstream remains on private protocol 22; the fork remains on 23
 because its `CellData` wire layout still carries underline color.
 
-Three upstream commits arrived after the previous run. Linux clipboard reads
-and writes now share a bounded deadline, kill failed or hung helper process
-groups, preserve successful detached clipboard owners, and show copy feedback
-only after dispatch succeeds. Remote attach now escapes the ready marker's
-newlines so tcsh login shells interpret it correctly. OpenCode and Kilo
-integration installation now follows `OPENCODE_CONFIG_DIR` and
-`XDG_CONFIG_HOME`, with literal-path and precedence tests. These fixes are
-orthogonal to the seven fork behaviors: they do not transport underline color,
-augment DECRQSS replies, or add the fork's tab naming and theming policies.
-Stable v0.9.5 and the current preview still advertise protocol 22.
+No upstream commits arrived after the previous run. The newest upstream
+functionality therefore remains the three commits assessed on 2026-10-27:
+Linux clipboard helpers have bounded cleanup, remote attach escapes its ready
+marker for tcsh, and OpenCode and Kilo installation follows the XDG and
+tool-specific config directories. Those changes remain orthogonal to the seven
+fork behaviors: they do not transport underline color, augment DECRQSS replies,
+or add the fork's tab naming and theming policies. Stable v0.9.5 and the current
+preview still advertise protocol 22.
 
-Local `master` and `fork/master` both started at `53162b54`. Reconciling them was
-a no-op. All 51 pre-existing fork commits rebased without conflict onto
-`2713feb5`, and `git range-diff` matched every old commit to its replayed commit
-without a patch change. No local implementation became redundant or was
-removed. The final diff and every equivalence assessment below were reviewed
-and remain current.
+Local `master` and `fork/master` both started at `c3e55398`. Reconciling them was
+a no-op, and `git rebase origin/master` reported that the branch was already up
+to date on `2713feb5`. No history or implementation changed, no local behavior
+became redundant, and the final diff and every equivalence assessment below
+were reviewed again and remain current.
 
 The partial equivalents and integration points found in earlier comparisons
 remain: automatic names use upstream's client-specific title target and bounded
@@ -62,9 +59,9 @@ catastrophically broken or slow, check this before investigating anything else.
 ## Current pristine comparison
 
 The full, non-fail-fast suite was compared against a detached pristine worktree
-at exact upstream `2713feb5` on 2026-10-27. The fork executed 4,157 tests: 4,087
-passed, 70 failed, and 17 were skipped. Pristine upstream executed 4,128 tests:
-4,058 passed, 70 failed, and 17 were skipped. The freshly sorted full-suite
+at exact upstream `2713feb5` on 2026-10-28. The fork executed 4,157 tests: 4,097
+passed, 60 failed, and 17 were skipped. Pristine upstream executed 4,128 tests:
+4,068 passed, 60 failed, and 17 were skipped. The freshly sorted full-suite
 failure sets were identical. Every `client_mode`, `cross_area`, and
 `multi_client` wire canary passed in both trees. This is current baseline
 evidence, not a permanent allowlist; future runs must still recompute the
@@ -89,7 +86,6 @@ app::api::worktrees::tests::*                                (8)
 app::tests::{hidden_panes_*,pane_exit_checkpoint_*,pane_split_request_*} (5)
 live_handoff::live_handoff_keeps_unmanaged_agent_name_*       (1)
 detect::tests::foreground_job_detects_agent_behind_shell_*    (1)
-integration::tests::{install_hermes_*,uninstall_hermes_*}     (10)
 pane::terminal::migration_tests::*ed3_for_droid*              (1)
 platform::linux::tests::failed_wl_copy_uses_x11_fallback      (1)
 pty::backend::unix::tests::portable_pty_setup_*               (1)
@@ -124,7 +120,7 @@ Windows lint, and docs recipes separately so that baseline failure does not hide
 their results. If a later run fails elsewhere, compare that exact command in the
 pristine worktree rather than assuming this snapshot still applies.
 
-### Validation at `2713feb5` on 2026-10-27
+### Validation at `2713feb5` on 2026-10-28
 
 - `cargo fmt --check`, Clippy with warnings denied, and 19 explicitly selected
   underline-color, DECRQSS, surface-delta, tab-render, rename, automatic-name,
@@ -132,17 +128,16 @@ pristine worktree rather than assuming this snapshot still applies.
   schema, published six-field v1 bytes, surface-scroll behavior, and protocol-23
   fallback for colored rows. Configuration-reference and docs-translation
   maintenance tests also passed. All seven local behavior/equivalence
-  assessments remain unchanged after reviewing the authoritative diff and the
-  three new upstream commits.
+  assessments remain unchanged after reviewing the authoritative diff and
+  confirming that upstream had not advanced.
 - `just bench-render-scale` was not repeated because the rebase had no conflicts,
   patch changes, or render/layout hot-path adaptation.
 - `just check` stopped at its nextest stage in both trees on the same two
   `api_ping` cwd failures. The complete non-fail-fast comparison above produced
-  the same 70-test failure set in both trees, so the run found no fork-only
-  failure. A repeated mechanical comparison found the same 70 fork failures and
-  one additional pristine-only occurrence of the upstream PTY race
-  `foreground_job_detects_shell_running_command`; that test then passed ten
-  consecutive pristine reruns. It is not part of the shared baseline.
+  the same 60-test failure set in both trees, so the run found no fork-only
+  failure. The first pristine build hit a full `/mnt/store`; the comparison was
+  rerun with Cargo, Zig, and Nix scratch data on `/home` and short out-of-tree
+  temp paths so Unix sockets and git-discovery tests kept their normal semantics.
 - `just maintenance-test` ran 150 tests and had the same single
   missing-`openssl` host failure in both trees. `just integration-assets-test`
   and `just docs-contract-test`, plus the release-workflow part of
