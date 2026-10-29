@@ -5,25 +5,27 @@ implementation commits on top of `herdrdev/herdr`, plus companion commits that
 only maintain documentation. This file tells an agent what they are, why they
 exist, and what to verify after rebasing onto a newer upstream.
 
-The latest comparison is against upstream `2713feb5` on 2026-10-28. Upstream
+The latest comparison is against upstream `bc8c2898` on 2026-10-29. Upstream
 still lacks a complete equivalent for every behavior below, so the fork cannot
 yet be retired. Upstream remains on private protocol 22; the fork remains on 23
 because its `CellData` wire layout still carries underline color.
 
-No upstream commits arrived after the previous run. The newest upstream
-functionality therefore remains the three commits assessed on 2026-10-27:
-Linux clipboard helpers have bounded cleanup, remote attach escapes its ready
-marker for tcsh, and OpenCode and Kilo installation follows the XDG and
-tool-specific config directories. Those changes remain orthogonal to the seven
-fork behaviors: they do not transport underline color, augment DECRQSS replies,
-or add the fork's tab naming and theming policies. Stable v0.9.5 and the current
+One upstream commit arrived after the previous run. `bc8c2898` adds a monthly
+canonical-repository workflow that closes open issues older than 30 days only
+when they have no reactions, outside comments, or linked open/merged pull
+request. Manual runs default to a read-only report, the local runner is always
+read-only, and the workflow job is restricted to `herdrdev/herdr`. This is
+repository-maintenance functionality and is orthogonal to all seven fork
+behaviors: it does not transport underline color, augment DECRQSS replies, or
+add the fork's tab naming and theming policies. Stable v0.9.5 and the current
 preview still advertise protocol 22.
 
-Local `master` and `fork/master` both started at `c3e55398`. Reconciling them was
-a no-op, and `git rebase origin/master` reported that the branch was already up
-to date on `2713feb5`. No history or implementation changed, no local behavior
-became redundant, and the final diff and every equivalence assessment below
-were reviewed again and remain current.
+Local `master` and `fork/master` both started at `92949dfd`. Reconciling them was
+a no-op, and `git rebase origin/master` replayed all 53 local commits onto
+`bc8c2898` without conflicts. `git range-diff` classified every replayed patch
+as unchanged. No implementation changed, no local behavior became redundant,
+and the final diff and every equivalence assessment below were reviewed again
+and remain current.
 
 The partial equivalents and integration points found in earlier comparisons
 remain: automatic names use upstream's client-specific title target and bounded
@@ -59,7 +61,7 @@ catastrophically broken or slow, check this before investigating anything else.
 ## Current pristine comparison
 
 The full, non-fail-fast suite was compared against a detached pristine worktree
-at exact upstream `2713feb5` on 2026-10-28. The fork executed 4,157 tests: 4,097
+at exact upstream `bc8c2898` on 2026-10-29. The fork executed 4,157 tests: 4,097
 passed, 60 failed, and 17 were skipped. Pristine upstream executed 4,128 tests:
 4,068 passed, 60 failed, and 17 were skipped. The freshly sorted full-suite
 failure sets were identical. Every `client_mode`, `cross_area`, and
@@ -120,7 +122,7 @@ Windows lint, and docs recipes separately so that baseline failure does not hide
 their results. If a later run fails elsewhere, compare that exact command in the
 pristine worktree rather than assuming this snapshot still applies.
 
-### Validation at `2713feb5` on 2026-10-28
+### Validation at `bc8c2898` on 2026-10-29
 
 - `cargo fmt --check`, Clippy with warnings denied, and 19 explicitly selected
   underline-color, DECRQSS, surface-delta, tab-render, rename, automatic-name,
@@ -128,16 +130,17 @@ pristine worktree rather than assuming this snapshot still applies.
   schema, published six-field v1 bytes, surface-scroll behavior, and protocol-23
   fallback for colored rows. Configuration-reference and docs-translation
   maintenance tests also passed. All seven local behavior/equivalence
-  assessments remain unchanged after reviewing the authoritative diff and
-  confirming that upstream had not advanced.
+  assessments remain unchanged after reviewing the authoritative diff and the
+  new upstream stale-issue workflow.
 - `just bench-render-scale` was not repeated because the rebase had no conflicts,
   patch changes, or render/layout hot-path adaptation.
 - `just check` stopped at its nextest stage in both trees on the same two
   `api_ping` cwd failures. The complete non-fail-fast comparison above produced
   the same 60-test failure set in both trees, so the run found no fork-only
-  failure. The first pristine build hit a full `/mnt/store`; the comparison was
-  rerun with Cargo, Zig, and Nix scratch data on `/home` and short out-of-tree
-  temp paths so Unix sockets and git-discovery tests kept their normal semantics.
+  failure. The first pristine build again hit a full `/mnt/store`; its generated
+  2.2 GB build directory was removed, and the comparison was rerun with Cargo,
+  Zig, Nix cache, and short temporary paths on `/home` so Unix sockets and
+  git-discovery tests kept their normal semantics.
 - `just maintenance-test` ran 150 tests and had the same single
   missing-`openssl` host failure in both trees. `just integration-assets-test`
   and `just docs-contract-test`, plus the release-workflow part of
