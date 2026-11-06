@@ -5,7 +5,7 @@ implementation commits on top of `herdrdev/herdr`, plus companion commits that
 only maintain documentation. This file tells an agent what they are, why they
 exist, and what to verify after rebasing onto a newer upstream.
 
-The latest comparison is against upstream `ee5bfb50` on 2026-11-02. Upstream
+The latest comparison is against upstream `ee5bfb50` on 2026-11-06. Upstream
 still lacks a complete equivalent for every behavior below, so the fork cannot
 yet be retired. Upstream remains on private protocol 22; the fork remains on 23
 because its `CellData` wire layout still carries underline color.
@@ -17,10 +17,10 @@ current preview, and upstream source still advertise protocol 22; upstream still
 does not transport underline color, augment DECRQSS replies with SGR 58, or add
 the fork's tab naming and theming policies.
 
-Local `master` and `fork/master` both started at `6e69b5b3`. Reconciling them was
+Local `master` and `fork/master` both started at `f8f00ce4`. Reconciling them was
 a no-op, and `git rebase origin/master` reported that `master` was already up to
 date, so no commits were replayed and no conflicts occurred. After this guide
-update, the resulting inventory contains 58 local commits, including seven
+update, the resulting inventory contains 59 local commits, including seven
 behavioral changes plus their documentation and sync companions. No
 implementation changed, no local behavior became redundant, and the final diff
 and every equivalence assessment below were reviewed again and remain current.
@@ -59,7 +59,7 @@ catastrophically broken or slow, check this before investigating anything else.
 ## Current pristine comparison
 
 The full, non-fail-fast suite was compared against a detached pristine worktree
-at exact upstream `ee5bfb50` on 2026-11-02. The fork executed 4,157 tests: 4,097
+at exact upstream `ee5bfb50` on 2026-11-06. The fork executed 4,157 tests: 4,097
 passed, 60 failed, and 17 were skipped. Pristine upstream executed 4,128 tests:
 4,068 passed, 60 failed, and 17 were skipped. The freshly sorted failure sets
 were identical, so no fork-only test failed. Every `client_mode`, `cross_area`,
@@ -120,9 +120,9 @@ Windows lint, and docs recipes separately so that baseline failure does not hide
 their results. If a later run fails elsewhere, compare that exact command in the
 pristine worktree rather than assuming this snapshot still applies.
 
-### Validation at `ee5bfb50` on 2026-11-02
+### Validation at `ee5bfb50` on 2026-11-06
 
-- `cargo fmt --check`, Clippy with warnings denied, and 27 explicitly selected
+- `cargo fmt --check`, Clippy with warnings denied, and 29 explicitly selected
   underline-color, DECRQSS, surface-delta, tab-render, rename, automatic-name,
   and client-title regressions passed. The full suite pins the generated API
   schema, published six-field v1 bytes, surface-scroll behavior, and protocol-23
